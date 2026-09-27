@@ -28,7 +28,8 @@ export interface RecentRecord {
 
 export const RECENTS_LIMIT = 12;
 
-const keyFor = (orgId: string) => `work.recents.${orgId}`;
+// Scoped to the offline partition (deployment + user + org), never org alone.
+const keyFor = (scope: string) => `work.recents.${scope}`;
 
 /** Pure MRU update: move-to-front on re-view, refresh the snapshot, cap. */
 export function pushRecent(

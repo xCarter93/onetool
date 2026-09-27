@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useSmoothText, type UIMessage } from "@convex-dev/agent/react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { CircleAlert } from "lucide-react-native";
@@ -47,22 +48,30 @@ function humanizeToolLabel(name: string): { active: string; done: string } {
 	return { done: label, active: `${label}…` };
 }
 
+/** Bordered panel for a tool result row — web's assistant-panel renderer look. */
+function ResultPanel({ children }: { children: ReactNode }) {
+	const t = useTokens();
+	return (
+		<View style={[styles.resultPanel, { borderColor: t.line }]}>{children}</View>
+	);
+}
+
 function ToolChip({ name, state }: { name: string; state?: string }) {
 	const t = useTokens();
 	const failed = state === "output-error";
 	const running = state !== "output-available" && state !== "output-error";
 	const { active, done } = humanizeToolLabel(name);
 	return (
-		<View style={styles.chipRow}>
+		<ResultPanel>
 			{failed ? (
-				<CircleAlert size={12} color={t.faint} />
+				<CircleAlert size={13} color={t.faint} />
 			) : running ? (
 				<ActivityIndicator size="small" color={t.faint} />
 			) : null}
 			<Text style={[styles.chipText, { color: t.faint }]}>
 				{failed ? `Hit a snag: ${done.toLowerCase()}` : running ? active : done}
 			</Text>
-		</View>
+		</ResultPanel>
 	);
 }
 
@@ -84,31 +93,39 @@ function NavigateChip({ part }: { part: AssistantToolPart }) {
 	if (!path) return <ToolChip name="navigate" state={part.state} />;
 	if (!output?.ok) {
 		return (
-			<Text style={[styles.chipText, { color: t.faint }]}>
-				Couldn&apos;t open that page.
-			</Text>
+			<ResultPanel>
+				<Text style={[styles.chipText, { color: t.faint }]}>
+					Couldn&apos;t open that page.
+				</Text>
+			</ResultPanel>
 		);
 	}
 	const mobileRoute = mapWebPathToMobileRoute(path);
 	if (!mobileRoute) {
 		return (
-			<Text style={[styles.chipText, { color: t.faint }]}>
-				I opened that page on the web version of the app — it isn&apos;t
-				available here yet.
-			</Text>
+			<ResultPanel>
+				<Text style={[styles.chipText, { color: t.faint }]}>
+					I opened that page on the web version of the app — it isn&apos;t
+					available here yet.
+				</Text>
+			</ResultPanel>
 		);
 	}
 	return (
-		<Text style={[styles.chipText, { color: t.faint }]}>Opened that for you.</Text>
+		<ResultPanel>
+			<Text style={[styles.chipText, { color: t.faint }]}>Opened that for you.</Text>
+		</ResultPanel>
 	);
 }
 
 function ConfigureReportChip() {
 	const t = useTokens();
 	return (
-		<Text style={[styles.chipText, { color: t.faint }]}>
-			The report builder lives in the web app.
-		</Text>
+		<ResultPanel>
+			<Text style={[styles.chipText, { color: t.faint }]}>
+				The report builder lives in the web app.
+			</Text>
+		</ResultPanel>
 	);
 }
 
@@ -125,12 +142,7 @@ export function UserBubble({ message }: { message: UIMessage }) {
 		.join("");
 	return (
 		<View style={styles.userRow}>
-			<View
-				style={[
-					styles.userBubble,
-					{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-				]}
-			>
+			<View style={[styles.userBubble, { backgroundColor: t.secondary }]}>
 				<Text style={[styles.userText, { color: t.ink }]}>{text}</Text>
 			</View>
 		</View>
@@ -170,7 +182,6 @@ const styles = StyleSheet.create({
 	},
 	userBubble: {
 		maxWidth: "85%",
-		borderWidth: 1,
 		borderRadius: radii.card,
 		borderBottomRightRadius: 4,
 		paddingHorizontal: 14,
@@ -184,10 +195,15 @@ const styles = StyleSheet.create({
 	assistantCol: {
 		gap: 6,
 	},
-	chipRow: {
+	resultPanel: {
 		flexDirection: "row",
 		alignItems: "center",
+		alignSelf: "flex-start",
 		gap: 6,
+		borderWidth: 1,
+		borderRadius: radii.card,
+		paddingHorizontal: 10,
+		paddingVertical: 8,
 	},
 	chipText: {
 		fontFamily: fontFamily.regular,

@@ -1,11 +1,11 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, type LucideIcon } from "lucide-react-native";
-import { fontFamily, radii, touch, type, useTokens } from "@/lib/theme";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
+import { NOTCH_CLEARANCE } from "@/components/frame/notch";
 
-// The one title row an iPad pane is allowed (locked: one pane → one header). NO
-// org chip, NO bell, NO avatar — the rail owns all three.
+// The one title row an iPad pane is allowed: web's page header inside the
+// canvas. The sidebar owns org, profile and notifications.
 
 interface PaneHeaderProps {
 	title?: string;
@@ -17,17 +17,14 @@ interface PaneHeaderProps {
 
 export function PaneHeader({ title, sub, onBack, right }: PaneHeaderProps) {
 	const t = useTokens();
-	const insets = useSafeAreaInsets();
-	const safeTop = Math.max(insets.top, 36);
-
 	return (
-		<View style={[styles.root, { paddingTop: safeTop }]}>
+		<View style={[styles.root, { borderBottomColor: t.line }]}>
 			{onBack ? (
 				<Pressable
 					onPress={onBack}
 					style={[
 						styles.iconBtn,
-						{ borderColor: t.line, backgroundColor: t.card },
+						{ borderColor: t.input, backgroundColor: t.card },
 					]}
 					accessibilityRole="button"
 					accessibilityLabel="Go back"
@@ -70,7 +67,7 @@ export function PaneAction({
 	return (
 		<Pressable
 			onPress={onPress}
-			style={[styles.iconBtn, { borderColor: t.line, backgroundColor: t.card }]}
+			style={[styles.iconBtn, { borderColor: t.input, backgroundColor: t.card }]}
 			accessibilityRole="button"
 			accessibilityLabel={label}
 		>
@@ -85,15 +82,17 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 12,
 		paddingHorizontal: 16,
+		paddingTop: NOTCH_CLEARANCE,
 		paddingBottom: 12,
+		borderBottomWidth: 1,
 	},
 	titles: {
 		flex: 1,
 		minWidth: 0,
 	},
 	iconBtn: {
-		width: touch.min,
-		height: touch.min,
+		width: 36,
+		height: 36,
 		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		alignItems: "center",
@@ -102,11 +101,12 @@ const styles = StyleSheet.create({
 	},
 	title: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.h2,
+		fontSize: 20,
+		letterSpacing: -0.4,
 	},
 	sub: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
+		fontSize: 13,
 		marginTop: 1,
 	},
 });

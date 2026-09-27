@@ -53,6 +53,8 @@ import { nextQuoteNumber, reserveQuoteNumber } from "./lib/orgCounters";
 import { buildPortalQuoteUrl } from "./portal/quoteUrl";
 import { mintPortalAccessId } from "./clients";
 import { resolveQuoteApprovalDocument } from "./lib/quoteApprovalDocument";
+import { loadQuoteDocumentSnapshot } from "./lib/quoteContentSnapshot";
+import { withReceipt } from "./lib/mutationReceipts";
 
 /**
  * Quote operations
@@ -1642,9 +1644,32 @@ export const approveInPerson = userMutation({
 		signatureStorageId: v.id("_storage"),
 		signatureRawData: v.optional(v.string()),
 		deviceDescription: v.optional(v.string()),
+		// Offline signing (PRD-mobile-offline §3 Tier 4): informational only, the
+		// server always stamps its own `now` for termsAcceptedAt/approvedAt.
+		capturedAt: v.optional(v.number()),
+		idempotencyKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await ctx.requireLevel("quotes", "modify");
+
+		return withReceipt(ctx, args.idempotencyKey, "quotes.approveInPerson", args, () =>
+			approveInPersonAfterReceipt(ctx, args)
+		);
+	},
+});
+
+async function approveInPersonAfterReceipt(
+	ctx: UserMutationCtx,
+	args: {
+		id: Id<"quotes">;
+		clientContactId: Id<"clientContacts">;
+		expectedDocumentId: Id<"documents">;
+		signatureStorageId: Id<"_storage">;
+		signatureRawData?: string;
+		deviceDescription?: string;
+		capturedAt?: number;
+	}
+) {
 		const quote = await ctx.orgEntity("quotes", args.id);
 		await ctx.requireRecordScope("quotes", {
 			projectId: quote.projectId,
@@ -1698,28 +1723,48 @@ export const approveInPerson = userMutation({
 		const client = await ctx.db.get(quote.clientId);
 		const clientName = client?.companyName ?? "Client";
 
-		const lineItems = await ctx.db
-			.query("quoteLineItems")
-			.withIndex("by_quote", (q) => q.eq("quoteId", args.id))
-			.collect();
-		const lineItemsSnapshot = lineItems
-			.slice()
-			.sort((a, b) => a.sortOrder - b.sortOrder)
-			.map((li) => ({
-				description: li.description,
-				quantity: li.quantity,
-				unit: li.unit,
-				rate: li.rate,
-				amount: li.amount,
-				sortOrder: li.sortOrder,
-			}));
-		const totals = await calculateQuoteTotals(ctx, args.id, {
-			discountEnabled: quote.discountEnabled,
-			discountAmount: quote.discountAmount,
-			discountType: quote.discountType,
-			taxEnabled: quote.taxEnabled,
-			taxRate: quote.taxRate,
-		});
+		// Pinned document is the authority on what was signed (PRD-mobile-offline §3 Tier 4); legacy docs fall back to live data.
+		const documentSnapshot = await loadQuoteDocumentSnapshot(ctx, doc);
+		let lineItemsSnapshot: {
+			description: string;
+			quantity: number;
+			unit: string;
+			rate: number;
+			amount: number;
+			sortOrder: number;
+		}[];
+		let totals: { subtotal: number; taxAmount: number; total: number };
+		if (documentSnapshot) {
+			lineItemsSnapshot = documentSnapshot.lineItems;
+			totals = {
+				subtotal: documentSnapshot.subtotal,
+				taxAmount: documentSnapshot.taxAmount,
+				total: documentSnapshot.total,
+			};
+		} else {
+			const lineItems = await ctx.db
+				.query("quoteLineItems")
+				.withIndex("by_quote", (q) => q.eq("quoteId", args.id))
+				.collect();
+			lineItemsSnapshot = lineItems
+				.slice()
+				.sort((a, b) => a.sortOrder - b.sortOrder)
+				.map((li) => ({
+					description: li.description,
+					quantity: li.quantity,
+					unit: li.unit,
+					rate: li.rate,
+					amount: li.amount,
+					sortOrder: li.sortOrder,
+				}));
+			totals = await calculateQuoteTotals(ctx, args.id, {
+				discountEnabled: quote.discountEnabled,
+				discountAmount: quote.discountAmount,
+				discountType: quote.discountType,
+				taxEnabled: quote.taxEnabled,
+				taxRate: quote.taxRate,
+			});
+		}
 
 		const now = Date.now();
 
@@ -1744,6 +1789,7 @@ export const approveInPerson = userMutation({
 			termsAcceptedAt: now,
 			channel: "in_person",
 			capturedByUserId: ctx.user._id,
+			capturedAt: args.capturedAt,
 			createdAt: now,
 		});
 
@@ -1776,5 +1822,4 @@ export const approveInPerson = userMutation({
 		}
 
 		return { auditId, approvedAt: now };
-	},
-});
+}

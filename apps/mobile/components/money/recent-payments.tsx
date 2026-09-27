@@ -1,23 +1,15 @@
 import { StyleSheet, Text, View } from "react-native";
+import { Wallet } from "lucide-react-native";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "@onetool/backend/convex/_generated/api";
-import { fontFamily, recordTint, type, useTokens } from "@/lib/theme";
-import { ListRow } from "@/components/ui";
+import { fontFamily, type, useTokens } from "@/lib/theme";
+import { Panel, RecordRow } from "@/components/canvas";
 import { formatCurrency, formatRelativeDay } from "@/lib/format";
 
 // Shape comes from the query itself — see needs-attention.tsx.
 type Payment = FunctionReturnType<
 	typeof api.businessHealth.get
 >["recentPayments"][number];
-
-// Payment method → the glyph the record-payment sheet already uses for it, so
-// the same money reads the same way in both places. Unknown manual strings fall
-// through to the row's neutral banknote.
-const METHOD_ICON = {
-	card: "CreditCard",
-	cash: "Banknote",
-	check: "Landmark",
-} as const;
 
 function methodLabel(method: string | undefined): string | null {
 	if (!method) return null;
@@ -26,8 +18,8 @@ function methodLabel(method: string | undefined): string | null {
 }
 
 /**
- * "Recent payments" — money that actually landed, newest first (backend caps it
- * at five). Rows open the invoice the payment settled.
+ * "Payments" tab of the Money hub — money that actually landed, newest first
+ * (backend caps it at five). Rows open the invoice the payment settled.
  */
 export function RecentPayments({
 	payments,
@@ -38,37 +30,42 @@ export function RecentPayments({
 	payments: Payment[];
 	/** Seeded once by the screen — Date.now() during render is a lint error. */
 	now: number;
-	/** iPad master-detail: marks the row whose invoice the detail pane shows,
-	 * same contract as NeedsAttention. Two payments on one invoice both mark. */
+	/** iPad master-detail: marks the row whose invoice the detail pane shows.
+	 * Two payments on one invoice both mark. */
 	selected?: { kind: "quote" | "invoice"; id: string } | null;
 	onOpen: (payment: Payment) => void;
 }) {
 	const t = useTokens();
 
+	if (payments.length === 0) {
+		return (
+			<Panel>
+				<View style={styles.clear}>
+					<Wallet size={17} color={t.sub} />
+					<Text style={[styles.clearText, { color: t.sub }]}>
+						No payments recorded yet.
+					</Text>
+				</View>
+			</Panel>
+		);
+	}
+
 	return (
-		<View>
-			{payments.map((payment, i) => {
+		<Panel>
+			{payments.map((payment) => {
 				const label = methodLabel(payment.method);
-				const icon =
-					payment.method && payment.method in METHOD_ICON
-						? METHOD_ICON[payment.method as keyof typeof METHOD_ICON]
-						: "Banknote";
+				const subtitle = label
+					? `${formatRelativeDay(payment.paidAt, now)} · ${label}`
+					: formatRelativeDay(payment.paidAt, now);
 				return (
-					<ListRow
+					<RecordRow
 						key={payment.id}
-						icon={icon}
-						iconColor={recordTint.invoice.fg}
-						iconBg={recordTint.invoice.bg}
+						kind="invoice"
 						title={payment.clientName}
-						sub={
-							label
-								? `${formatRelativeDay(payment.paidAt, now)} · ${label}`
-								: formatRelativeDay(payment.paidAt, now)
-						}
-						last={i === payments.length - 1}
+						subtitle={subtitle}
+						chevron={false}
 						selected={
-							selected?.kind === "invoice" &&
-							selected.id === payment.invoiceId
+							selected?.kind === "invoice" && selected.id === payment.invoiceId
 						}
 						right={
 							<Text style={[styles.amount, { color: t.success }]}>
@@ -79,7 +76,7 @@ export function RecentPayments({
 					/>
 				);
 			})}
-		</View>
+		</Panel>
 	);
 }
 
@@ -88,5 +85,18 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.bold,
 		fontSize: type.h4,
 		fontVariant: ["tabular-nums"],
+	},
+	clear: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 9,
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+	},
+	clearText: {
+		flex: 1,
+		minWidth: 0,
+		fontFamily: fontFamily.regular,
+		fontSize: type.rowTitle,
 	},
 });

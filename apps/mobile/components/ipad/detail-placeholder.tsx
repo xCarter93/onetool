@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
 	},
 	heading: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.h2,
+		fontSize: 18,
 	},
 	body: {
 		fontFamily: fontFamily.regular,

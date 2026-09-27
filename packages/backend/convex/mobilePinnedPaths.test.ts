@@ -48,9 +48,11 @@ const PINNED_PATHS = [
 	"clients.search", // removed from mobile 2026-07-25; in the 1.0.1 build
 	"clients.update",
 	"communityPages.get",
+	"documents.getAllDocumentsWithSignatures",
 	"documents.getLatest",
 	"documents.listSignedByProject", // June-era TestFlight builds
 	"entitlements.getMine",
+	"favorites.list",
 	"homeStats.getJourneyProgress", // 1.0.1 build
 	"invoiceLineItems.create",
 	"invoiceLineItems.listByInvoice",

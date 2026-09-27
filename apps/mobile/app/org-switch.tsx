@@ -4,10 +4,10 @@ import {
 	Pressable,
 	ActivityIndicator,
 	Alert,
-	Image,
 	StyleSheet,
 	ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { useEffect, useState } from "react";
 import { useOrganizationList, useOrganization } from "@clerk/expo";
 import { router } from "expo-router";
@@ -15,8 +15,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, Building, RefreshCw, X } from "lucide-react-native";
 import { fontFamily, radii, spacing, touch, type, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
+import { Panel } from "@/components/canvas";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
+import { useOffline } from "@/lib/offline/OfflineProvider";
+import { orgSwitchPendingMessage, summarizePendingOps } from "@/lib/offline/sync-copy";
 
 const MEMBERSHIP_PAGE_SIZE = 25;
 
@@ -26,14 +29,13 @@ function formatRole(role: string): string {
 }
 
 // Org switcher form-sheet body. Sheet chrome (detents/grabber) comes from the
-// Stack.Screen options in _layout.tsx — this file is the content only.
-// Clerk setActive path is ported verbatim from components/OrganizationSwitcher.tsx
-// (the proven switch path); the ConvexProvider key-reinit in _layout.tsx re-scopes
-// every query on org change.
+// Stack.Screen options in _layout.tsx — this file is the content only. The
+// ConvexProvider key-reinit in _layout.tsx re-scopes every query on org change.
 export default function OrgSwitchSheet() {
 	const t = useTokens();
 	const insets = useSafeAreaInsets();
 	const { device } = useDevice();
+	const { ops } = useOffline();
 	const { userMemberships, setActive, isLoaded } = useOrganizationList({
 		userMemberships: {
 			infinite: true,
@@ -42,6 +44,8 @@ export default function OrgSwitchSheet() {
 		},
 	});
 	const { organization: activeOrg } = useOrganization();
+	// Per-org fallback to initials on a failed logo load, not just missing imageUrl.
+	const [failedOrgLogos, setFailedOrgLogos] = useState<Set<string>>(new Set());
 	const [switching, setSwitching] = useState(false);
 
 	const organizationList = userMemberships.data ?? [];
@@ -62,7 +66,7 @@ export default function OrgSwitchSheet() {
 		userMemberships.fetchNext,
 	]);
 
-	const handleOrgSwitch = async (orgId: string) => {
+	const runOrgSwitch = async (orgId: string) => {
 		try {
 			setSwitching(true);
 
@@ -75,8 +79,8 @@ export default function OrgSwitchSheet() {
 			// Settle so Clerk finishes updating before the ConvexProvider key-reinit fires
 			await new Promise((resolve) => setTimeout(resolve, 500));
 
-			// Dismiss the sheet — ConvexProvider re-scopes queries via its key prop
-			router.back();
+			// Land on Today: every role can see it, unlike whatever screen was open.
+			router.dismissTo("/");
 		} catch (error) {
 			console.error("Failed to switch organization:", error);
 			Alert.alert("Error", "Failed to switch organization. Please try again.", [
@@ -87,24 +91,39 @@ export default function OrgSwitchSheet() {
 		}
 	};
 
+	// Switching never blocks on pending work — the outbox drains this org's
+	// queue whenever it's next active and online (§4.5). Just say so.
+	const handleOrgSwitch = (orgId: string) => {
+		const pendingNotice = orgSwitchPendingMessage(summarizePendingOps(ops));
+		if (!pendingNotice) {
+			void runOrgSwitch(orgId);
+			return;
+		}
+		Alert.alert("Unsynced changes here", pendingNotice, [
+			{ text: "Switch organization", onPress: () => void runOrgSwitch(orgId) },
+		]);
+	};
+
 	const content = (
 		<>
-			<View style={styles.header}>
-				<View style={{ flex: 1 }} />
-				<Text style={[styles.title, { color: t.ink }]}>
-					Switch organization
-				</Text>
-				<View style={styles.headerAction}>
-					<Pressable
-						onPress={() => router.back()}
-						hitSlop={8}
-						accessibilityRole="button"
-						accessibilityLabel="Close"
-						style={styles.closeBtn}
-					>
-						<X size={22} color={t.sub} />
-					</Pressable>
+			<View style={[styles.header, { borderBottomColor: t.line }]}>
+				<View style={[styles.tile, { backgroundColor: t.secondary }]}>
+					<Building size={18} color={t.frostedInk} strokeWidth={2} />
 				</View>
+				<View style={styles.headerText}>
+					<Text style={[styles.title, { color: t.ink }]} accessibilityRole="header">
+						Switch organization
+					</Text>
+				</View>
+				<Pressable
+					onPress={() => router.back()}
+					hitSlop={8}
+					accessibilityRole="button"
+					accessibilityLabel="Close"
+					style={({ pressed }) => [styles.headerBtn, pressed && { backgroundColor: t.secondary }]}
+				>
+					<X size={20} color={t.sub} strokeWidth={2} />
+				</Pressable>
 			</View>
 
 			{loadingMemberships ? (
@@ -143,64 +162,63 @@ export default function OrgSwitchSheet() {
 					showsVerticalScrollIndicator={organizationList.length > 6}
 				>
 					{organizationList.length > 0 ? (
-						organizationList.map((membership) => {
-							const org = membership.organization;
-							const isActive = org.id === activeOrg?.id;
-							const role = formatRole(membership.role ?? "member");
+						<Panel>
+							{organizationList.map((membership) => {
+								const org = membership.organization;
+								const isActive = org.id === activeOrg?.id;
+								const role = formatRole(membership.role ?? "member");
 
-							return (
-								<Pressable
-									key={org.id}
-									onPress={() => handleOrgSwitch(org.id)}
-									disabled={switching || isActive}
-									style={({ pressed }) => [
-										styles.row,
-										{
-											backgroundColor: isActive
-												? t.frostedBg
-												: pressed
-													? t.surface
-													: "transparent",
-											// primarySolid, not frostedBorder: a 30%-alpha border
-										// composites to ~1.4:1, and here the border is the only
-										// structural difference between active and inactive.
-										borderColor: isActive ? t.primarySolid : t.line,
-										},
-									]}
-								>
-									<View style={styles.rowLeft}>
-										{org.imageUrl ? (
-											<Image
-												source={{ uri: org.imageUrl }}
-												style={styles.orgImage}
-											/>
-										) : (
-											<Avatar text={(org.name || "O").slice(0, 2)} size={40} />
-										)}
-										<View style={styles.rowText}>
-											<Text
-												style={[
-													styles.orgName,
-													{
-														color: t.ink,
-														fontFamily: isActive
-															? fontFamily.semibold
-															: fontFamily.regular,
-													},
-												]}
-												numberOfLines={1}
-											>
-												{org.name}
-											</Text>
-											<Text style={[styles.role, { color: t.sub }]}>
-												{role}
-											</Text>
+								return (
+									<Pressable
+										key={org.id}
+										onPress={() => handleOrgSwitch(org.id)}
+										disabled={switching || isActive}
+										style={({ pressed }) => [
+											styles.row,
+											isActive && { backgroundColor: t.frostedBg },
+											!isActive && pressed && { backgroundColor: t.muted },
+										]}
+									>
+										<View style={styles.rowLeft}>
+											{org.imageUrl && !failedOrgLogos.has(org.id) ? (
+												<Image
+													source={{ uri: org.imageUrl }}
+													style={styles.orgImage}
+													contentFit="cover"
+													cachePolicy="disk"
+													transition={150}
+													onError={() =>
+														setFailedOrgLogos((prev) => new Set(prev).add(org.id))
+													}
+												/>
+											) : (
+												<Avatar text={(org.name || "O").slice(0, 2)} size={40} />
+											)}
+											<View style={styles.rowText}>
+												<Text
+													style={[
+														styles.orgName,
+														{
+															color: t.ink,
+															fontFamily: isActive
+																? fontFamily.semibold
+																: fontFamily.regular,
+														},
+													]}
+													numberOfLines={1}
+												>
+													{org.name}
+												</Text>
+												<Text style={[styles.role, { color: t.sub }]}>
+													{role}
+												</Text>
+											</View>
 										</View>
-									</View>
-									{isActive && <Check size={20} color={t.frostedInk} />}
-								</Pressable>
-							);
-						})
+										{isActive && <Check size={20} color={t.frostedInk} />}
+									</Pressable>
+								);
+							})}
+						</Panel>
 					) : (
 						<View style={styles.empty}>
 							<Building size={48} color={t.faint} />
@@ -290,24 +308,30 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingHorizontal: 20,
-		paddingBottom: spacing.gutter,
+		gap: 12,
+		paddingHorizontal: spacing.md,
+		paddingBottom: 14,
+		borderBottomWidth: 1,
+	},
+	tile: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	headerText: {
+		flex: 1,
+		minWidth: 0,
 	},
 	title: {
-		flex: 2,
-		textAlign: "center",
-		fontSize: type.h2,
-		lineHeight: 30,
-		fontFamily: fontFamily.bold,
+		fontSize: type.h3,
+		fontFamily: fontFamily.semibold,
 	},
-	headerAction: {
-		flex: 1,
-		alignItems: "flex-end",
-	},
-	closeBtn: {
-		width: touch.min,
-		height: touch.min,
-		borderRadius: radii.pill,
+	headerBtn: {
+		width: 36,
+		height: 36,
+		borderRadius: radii.ctrl,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -323,6 +347,7 @@ const styles = StyleSheet.create({
 	},
 	listContent: {
 		paddingHorizontal: spacing.md,
+		paddingTop: spacing.md,
 		paddingBottom: spacing.lg,
 	},
 	emptyListContent: {
@@ -333,10 +358,9 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		padding: 12,
-		borderRadius: radii["4xl"],
-		borderWidth: 1,
-		marginBottom: spacing.sm,
+		paddingHorizontal: 12,
+		paddingVertical: 11,
+		minHeight: 56,
 	},
 	rowLeft: {
 		flexDirection: "row",

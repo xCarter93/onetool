@@ -1,4 +1,5 @@
-import { Redirect, Stack } from "expo-router";
+import { Redirect } from "expo-router";
+import { Stack } from "expo-router/stack";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
@@ -16,7 +17,8 @@ export default function AuthRoutesLayout() {
 	const isSignedInBool = Boolean(isSignedIn);
 	const dest = resolveAuthDestination({
 		authLoaded: Boolean(authLoaded),
-		orgLoaded: Boolean(orgLoaded && listLoaded),
+		orgLoaded: Boolean(orgLoaded),
+		membershipsLoaded: Boolean(listLoaded),
 		isSignedIn: isSignedInBool,
 		hasActiveOrg: Boolean(organization),
 		membershipCount: userMemberships?.data?.length ?? 0,

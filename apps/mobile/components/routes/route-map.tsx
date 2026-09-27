@@ -12,8 +12,8 @@ import {
 } from "@/lib/route-run";
 import { fontFamily, useTokens } from "@/lib/theme";
 
-// Camera padding keeps the fitted route clear of the floating header (top) and
-// the bottom sheet's collapsed snap (bottom).
+// Camera padding keeps the fitted route clear of the notch and top chips
+// (top) and the bottom sheet's collapsed snap (bottom).
 const FIT_PADDING = {
 	paddingTop: 110,
 	paddingBottom: 300,

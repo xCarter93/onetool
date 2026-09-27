@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
 	card: {
 		width: "100%",
 		maxWidth: 520,
-		borderRadius: radii.sheet,
+		borderRadius: radii.card,
 		overflow: "hidden",
 		// A modal genuinely floats, so it keeps its shadow while cards went flat.
 		boxShadow: shadow.lg,

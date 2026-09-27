@@ -9,7 +9,6 @@ import {
 import {
 	fontFamily,
 	radii,
-	recordTint,
 	STATUS,
 	touch,
 	tracking,
@@ -19,6 +18,7 @@ import {
 import { ChevronRight } from "lucide-react-native";
 import {
 	formatClockLabel,
+	minutesFromHHMM,
 	type AgendaProject,
 	type AgendaTask,
 } from "@/lib/agenda";
@@ -26,16 +26,30 @@ import {
 interface NextUpCardProps {
 	task: AgendaTask;
 	updating: boolean;
+	/** Local minutes-since-midnight, for the countdown chip. */
+	nowMinutes: number;
 	onToggle: () => void;
 	onOpen: () => void;
 	/** Team scope initials chip; undefined in Me scope. */
 	assignee?: { initials: string; name: string };
 }
 
+/** "In 18 min" / "In 2h 5m" / "Now" — undefined for an untimed job. */
+function countdownLabel(startTime: string | undefined, nowMinutes: number): string | undefined {
+	const start = minutesFromHHMM(startTime);
+	if (start === null) return undefined;
+	const diff = start - nowMinutes;
+	if (diff <= 0) return "Now";
+	if (diff < 60) return `In ${diff} min`;
+	const h = Math.floor(diff / 60);
+	const m = diff % 60;
+	return m === 0 ? `In ${h}h` : `In ${h}h ${m}m`;
+}
+
 /**
  * The day's lead object — the first still-open timed job, promoted out of the
  * timeline into a card (Jobber's next-visit card, Zocdoc's "Up next"). It owns
- * the moment below the ink hero, so the time is the headline, not row metadata.
+ * the moment below the header, so the time is the headline, not row metadata.
  *
  * It carries the SAME checkbox contract as `AgendaRow`: checking off the current
  * job is the field worker's most frequent action, and a tap-to-open-only card
@@ -47,6 +61,7 @@ interface NextUpCardProps {
 export function NextUpCard({
 	task,
 	updating,
+	nowMinutes,
 	onToggle,
 	onOpen,
 	assignee,
@@ -60,6 +75,8 @@ export function NextUpCard({
 		task.status && task.status !== "pending"
 			? STATUS[task.status as keyof typeof STATUS]
 			: undefined;
+	const countdown = countdownLabel(task.startTime, nowMinutes);
+	const now = countdown === "Now";
 
 	return (
 		<View
@@ -68,7 +85,6 @@ export function NextUpCard({
 				{
 					backgroundColor: t.card,
 					borderColor: t.line,
-					borderLeftColor: recordTint.task.fg,
 				},
 			]}
 		>
@@ -89,7 +105,21 @@ export function NextUpCard({
 			>
 				<View style={styles.eyebrowRow}>
 					<Text style={[styles.eyebrow, { color: t.faint }]}>NEXT UP</Text>
-					{status ? (
+					<View style={styles.eyebrowSpacer} />
+					{countdown ? (
+						<View
+							style={[
+								styles.chip,
+								{ backgroundColor: now ? t.warningBg : t.frostedBg },
+							]}
+						>
+							<Text
+								style={[styles.chipText, { color: now ? t.warning : t.frostedInk }]}
+							>
+								{countdown}
+							</Text>
+						</View>
+					) : status ? (
 						<Text style={[styles.status, { color: status.c }]}>
 							{status.label}
 						</Text>
@@ -141,7 +171,11 @@ export function NextUpCard({
 						accessibilityElementsHidden
 						importantForAccessibility="no-hide-descendants"
 					>
-						<Text style={[styles.assigneeText, { color: t.frostedInk }]}>
+						{/* Capped, not resized — see agenda-row.tsx's identical fix. */}
+						<Text
+							style={[styles.assigneeText, { color: t.frostedInk }]}
+							maxFontSizeMultiplier={1.2}
+						>
 							{assignee.initials}
 						</Text>
 					</View>
@@ -185,7 +219,6 @@ export function NextUpProjectCard({
 				{
 					backgroundColor: t.card,
 					borderColor: t.line,
-					borderLeftColor: recordTint.project.fg,
 				},
 			]}
 		>
@@ -224,7 +257,6 @@ const styles = StyleSheet.create({
 	card: {
 		flexDirection: "row",
 		borderWidth: 1,
-		borderLeftWidth: 3,
 		borderRadius: radii.card,
 		overflow: "hidden",
 	},
@@ -238,8 +270,11 @@ const styles = StyleSheet.create({
 	},
 	eyebrowRow: {
 		flexDirection: "row",
-		alignItems: "baseline",
+		alignItems: "center",
 		gap: 8,
+	},
+	eyebrowSpacer: {
+		flex: 1,
 	},
 	eyebrow: {
 		fontFamily: fontFamily.semibold,
@@ -249,6 +284,16 @@ const styles = StyleSheet.create({
 	status: {
 		fontFamily: fontFamily.semibold,
 		fontSize: type.micro,
+	},
+	chip: {
+		borderRadius: radii.pill,
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+	},
+	chipText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: type.micro,
+		fontVariant: ["tabular-nums"],
 	},
 	timeRow: {
 		flexDirection: "row",

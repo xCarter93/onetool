@@ -1,9 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
 	Alert,
-	KeyboardAvoidingView,
-	Modal,
-	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -13,8 +10,10 @@ import {
 } from "react-native";
 import { Banknote, Check, Landmark, Wallet, X } from "lucide-react-native";
 import { badgeTone, fontFamily, radii, type, useTokens } from "@/lib/theme";
-import { Button, Eyebrow, SegmentedToggle } from "@/components/ui";
+import { Button, SegmentedToggle } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { FormSheet } from "@/components/sheets/form-sheet";
+import { SheetField, SheetInput } from "@/components/sheets/create-sheet";
 
 export type ManualMethod = "cash" | "check" | "other";
 
@@ -28,6 +27,11 @@ const METHODS = [
 // amount defaults to the remaining balance and edits DOWN only, the confirm
 // button carries the exact amount it will commit, and success is its own
 // step inside the sheet — no ambiguity about what was just recorded.
+//
+// Recording always queues through the offline outbox (PRD-mobile-offline §4.6:
+// every write goes through it, online or offline) — onSubmit resolves once the
+// change is saved on the device, not once the server confirms it, so the
+// success step can no longer promise a definite invoicePaid/remaining outcome.
 export function RecordPaymentSheet({
 	visible,
 	onClose,
@@ -39,22 +43,20 @@ export function RecordPaymentSheet({
 	onClose: () => void;
 	invoiceNumber: string;
 	remaining: number;
+	/** Resolves to whether the payment was saved on the device (queued to sync). */
 	onSubmit: (
 		amount: number,
 		method: ManualMethod,
 		note?: string
-	) => Promise<{ invoicePaid: boolean; remaining: number }>;
+	) => Promise<boolean>;
 }) {
 	const t = useTokens();
-	const [amountText, setAmountText] = useState("");
+	const seedAmountText = remaining > 0 ? remaining.toFixed(2) : "";
+	const [amountText, setAmountText] = useState(seedAmountText);
 	const [method, setMethod] = useState<ManualMethod>("cash");
 	const [note, setNote] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [done, setDone] = useState<{
-		amount: number;
-		invoicePaid: boolean;
-		remaining: number;
-	} | null>(null);
+	const [done, setDone] = useState<{ amount: number } | null>(null);
 
 	// Re-seed the form each time the sheet opens (remaining can change between
 	// opens as payments land). Guarded render-time derivation — the house
@@ -63,13 +65,34 @@ export function RecordPaymentSheet({
 	if (visible !== prevVisible) {
 		setPrevVisible(visible);
 		if (visible) {
-			setAmountText(remaining > 0 ? remaining.toFixed(2) : "");
+			setAmountText(seedAmountText);
 			setMethod("cash");
 			setNote("");
 			setDone(null);
 			setSaving(false);
 		}
 	}
+
+	// Success screen is never dirty (nothing left to lose) — let it swipe away freely.
+	const dirty =
+		!done &&
+		(amountText !== seedAmountText || method !== "cash" || note !== "");
+
+	const attemptClose = useCallback(() => {
+		if (saving) return;
+		if (!dirty) {
+			onClose();
+			return;
+		}
+		Alert.alert(
+			"Discard this payment?",
+			"Your changes haven't been saved.",
+			[
+				{ text: "Keep editing", style: "cancel" },
+				{ text: "Discard", style: "destructive", onPress: onClose },
+			]
+		);
+	}, [saving, dirty, onClose]);
 
 	const amount = Number.parseFloat(amountText.replace(/[^0-9.]/g, ""));
 	const amountValid =
@@ -79,8 +102,8 @@ export function RecordPaymentSheet({
 		if (!amountValid || saving) return;
 		setSaving(true);
 		try {
-			const result = await onSubmit(amount, method, note.trim() || undefined);
-			setDone({ amount, ...result });
+			const saved = await onSubmit(amount, method, note.trim() || undefined);
+			if (saved) setDone({ amount });
 		} catch {
 			Alert.alert("Couldn't record that payment", "Please try again.");
 		} finally {
@@ -89,16 +112,8 @@ export function RecordPaymentSheet({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			presentationStyle="pageSheet"
-			onRequestClose={onClose}
-		>
-			<KeyboardAvoidingView
-				style={[styles.root, { backgroundColor: t.bg }]}
-				behavior={Platform.OS === "ios" ? "padding" : undefined}
-			>
+		<FormSheet visible={visible} onDismiss={attemptClose} dirty={dirty} snapPoint="75%">
+			<View style={[styles.root, { backgroundColor: t.bg }]}>
 				<View style={styles.topBar}>
 					<Text style={[styles.topTitle, { color: t.ink }]}>
 						Record payment
@@ -106,7 +121,7 @@ export function RecordPaymentSheet({
 					<Pressable
 						accessibilityRole="button"
 						accessibilityLabel="Close"
-						onPress={onClose}
+						onPress={attemptClose}
 						hitSlop={8}
 						style={[styles.close, { backgroundColor: t.secondary }]}
 					>
@@ -123,14 +138,11 @@ export function RecordPaymentSheet({
 							<Check size={30} color={t.success} strokeWidth={3} />
 						</View>
 						<Text style={[styles.successTitle, { color: t.ink }]}>
-							Payment recorded
+							Payment saved
 						</Text>
 						<Text style={[styles.successBody, { color: t.sub }]}>
 							{formatCurrency(done.amount, { exact: true })} recorded against{" "}
-							{invoiceNumber}.
-							{done.invoicePaid
-								? " This invoice is now paid in full."
-								: ` ${formatCurrency(done.remaining, { exact: true })} remaining.`}
+							{invoiceNumber}. It will sync automatically.
 						</Text>
 						<Button title="Done" variant="solid" onPress={onClose} style={styles.successBtn} />
 					</View>
@@ -141,68 +153,55 @@ export function RecordPaymentSheet({
 							contentContainerStyle={styles.scroll}
 							keyboardShouldPersistTaps="handled"
 						>
-							<View style={styles.field}>
-								<Eyebrow>Amount</Eyebrow>
+							<SheetField
+								label="Amount"
+								hint={
+									amountText && !amountValid
+										? undefined
+										: `${formatCurrency(remaining, { exact: true })} outstanding on ${invoiceNumber}`
+								}
+								error={
+									amountText && !amountValid
+										? `Enter an amount up to ${formatCurrency(remaining, { exact: true })}`
+										: null
+								}
+							>
 								<View
 									style={[
 										styles.amountBox,
-										{ backgroundColor: t.card, borderColor: t.line },
+										{ backgroundColor: t.card, borderColor: t.input },
 									]}
 								>
-									<Text style={[styles.dollarSign, { color: t.faintDecor }]}>$</Text>
+									<Text style={[styles.dollarSign, { color: t.faint }]}>$</Text>
 									<TextInput
 										value={amountText}
 										onChangeText={setAmountText}
 										keyboardType="decimal-pad"
 										placeholder="0.00"
-										placeholderTextColor={t.faintDecor}
+										placeholderTextColor={t.faint}
 										style={[styles.amountInput, { color: t.ink }]}
 										accessibilityLabel="Payment amount in dollars"
 									/>
 								</View>
-								<Text
-									style={[
-										styles.helper,
-										{
-											color:
-												amountText && !amountValid ? t.danger : t.sub,
-										},
-									]}
-								>
-									{amountText && !amountValid
-										? `Enter an amount up to ${formatCurrency(remaining, { exact: true })}`
-										: `${formatCurrency(remaining, { exact: true })} outstanding on ${invoiceNumber}`}
-								</Text>
-							</View>
+							</SheetField>
 
-							<View style={styles.field}>
-								<Eyebrow>Method</Eyebrow>
+							<SheetField label="Method">
 								<SegmentedToggle
 									segments={METHODS}
 									value={method}
 									onChange={setMethod}
 								/>
-							</View>
+							</SheetField>
 
-							<View style={styles.field}>
-								<Eyebrow>Note</Eyebrow>
-								<TextInput
+							<SheetField label="Note">
+								<SheetInput
 									value={note}
 									onChangeText={setNote}
 									placeholder="Check #, who paid, anything worth remembering"
-									placeholderTextColor={t.faintDecor}
 									multiline
-									style={[
-										styles.noteInput,
-										{
-											backgroundColor: t.card,
-											borderColor: t.line,
-											color: t.ink,
-										},
-									]}
 									accessibilityLabel="Payment note"
 								/>
-							</View>
+							</SheetField>
 						</ScrollView>
 						<View
 							style={[
@@ -225,8 +224,8 @@ export function RecordPaymentSheet({
 						</View>
 					</>
 				)}
-			</KeyboardAvoidingView>
-		</Modal>
+			</View>
+		</FormSheet>
 	);
 }
 
@@ -250,11 +249,10 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	scroll: { padding: 18, paddingTop: 10, gap: 20 },
-	field: { gap: 8 },
 	amountBox: {
 		flexDirection: "row",
 		alignItems: "center",
-		borderRadius: radii.rLg,
+		borderRadius: radii.ctrl,
 		borderWidth: 1,
 		paddingHorizontal: 16,
 		paddingVertical: 12,
@@ -271,21 +269,6 @@ const styles = StyleSheet.create({
 		letterSpacing: -0.6,
 		fontVariant: ["tabular-nums"],
 		paddingVertical: 0,
-	},
-	helper: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.sm,
-	},
-	noteInput: {
-		borderRadius: radii.r,
-		borderWidth: 1,
-		paddingHorizontal: 14,
-		paddingVertical: 12,
-		minHeight: 76,
-		fontFamily: fontFamily.regular,
-		fontSize: type.body,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		textAlignVertical: "top",
 	},
 	footer: {
 		borderTopWidth: 1,

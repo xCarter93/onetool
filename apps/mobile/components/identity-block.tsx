@@ -1,103 +1,95 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { fontFamily, STATUS, tracking, type, useTokens } from "@/lib/theme";
+import { Badge } from "@/components/ui";
+import { TypeTile } from "@/components/canvas";
+import { fontFamily, type RecordKind, useTokens } from "@/lib/theme";
 
 interface IdentityBlockProps {
-	/** The record's own name — the hero's anchor: the ink band's title scrolls
-	 * away, so this has to carry the screen. */
+	kind: RecordKind;
+	/** The record's own name — the row's anchor. */
 	name?: string;
-	/** Key into the STATUS map — rendered as TEXT, never a badge pill. */
+	/** Key into the STATUS map — rendered as a Badge. */
 	statusKey?: string;
-	/** Quiet meta line: lead source, city, a tappable client link, … */
+	/** Quiet meta line: location, lead source, a tappable client link, … */
 	meta?: React.ReactNode;
 	/**
-	 * Wraps the status text so a screen can make it interactive (both detail
+	 * Wraps the status badge so a screen can make it interactive (both detail
 	 * screens hang a FieldMenu off it). The native MenuView host must receive a
-	 * SINGLE bare child inside a content-sized parent — the status wrapper is a
-	 * non-stretching row item (flexShrink:0, row alignItems:"center"), and
-	 * `meta` is a separate line rather than an inline sibling.
+	 * SINGLE bare child inside a content-sized parent — the wrapper is a
+	 * non-stretching row item (flexShrink:0).
 	 */
-	renderStatus?: (statusText: React.ReactNode) => React.ReactNode;
+	renderStatus?: (statusBadge: React.ReactNode) => React.ReactNode;
 }
 
-// Editorial identity header: name on the left with the status inline on the
-// right (the eyebrow-above stack left the hero's right half dead), meta below.
-// No monogram — the name IS the mark. Card-free by design; it sits directly on
-// the page canvas.
+// Frame 1c identity row: a 40px TypeTile, the name at 22/600, a status Badge
+// and meta line below. Card-free by design; it sits directly on the canvas.
 export function IdentityBlock({
+	kind,
 	name,
 	statusKey,
 	meta,
 	renderStatus,
 }: IdentityBlockProps) {
 	const t = useTokens();
-	const entry = statusKey
-		? STATUS[statusKey as keyof typeof STATUS]
-		: undefined;
-	const statusLabel = entry?.label ?? statusKey;
-	const statusColor = entry?.c ?? t.sub;
-
-	const statusText = statusKey ? (
-		<Text style={[styles.status, { color: statusColor }]} numberOfLines={1}>
-			{statusLabel}
-		</Text>
-	) : null;
+	const badge = statusKey ? <Badge status={statusKey} /> : null;
 
 	return (
-		<View style={styles.body}>
-			<View style={styles.titleRow}>
+		<View style={styles.row}>
+			<TypeTile kind={kind} size={40} />
+			<View style={styles.body}>
 				{name ? (
 					<Text style={[styles.name, { color: t.ink }]} numberOfLines={2}>
 						{name}
 					</Text>
 				) : null}
-				{statusText ? (
-					<View style={styles.statusWrap}>
-						{renderStatus ? renderStatus(statusText) : statusText}
+				{badge || meta ? (
+					<View style={styles.metaRow}>
+						{badge ? (
+							<View style={styles.badgeWrap}>
+								{renderStatus ? renderStatus(badge) : badge}
+							</View>
+						) : null}
+						{meta ? (
+							<View style={styles.metaFlex}>
+								{typeof meta === "string" ? <IdentityMeta>{meta}</IdentityMeta> : meta}
+							</View>
+						) : null}
 					</View>
 				) : null}
 			</View>
-			{meta ? <View style={styles.meta}>{meta}</View> : null}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	body: { minWidth: 0 },
-	titleRow: {
+	row: {
 		flexDirection: "row",
-		// Center, not baseline: the status may live inside a native MenuView
-		// host, which doesn't report a text baseline.
-		alignItems: "center",
+		alignItems: "flex-start",
 		gap: 12,
 	},
+	body: { flex: 1, minWidth: 0 },
 	name: {
 		fontFamily: fontFamily.semibold,
-		// h1, not h2: the hero owns the top of the screen, and at 20 the name
-		// left the right half of the band feeling empty (visual pass).
-		fontSize: type.h1,
-		letterSpacing: tracking.title,
-		flex: 1,
-		minWidth: 0,
+		fontSize: 22,
+		lineHeight: 27,
 	},
-	// flexShrink:0 + the row's center alignment keep the (possibly menu-hosting)
-	// wrapper content-sized — a stretched native MenuView trigger clips its
-	// label to "..".
-	statusWrap: { flexShrink: 0 },
-	status: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
-		textTransform: "uppercase",
+	metaRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginTop: 6,
 	},
-	meta: { marginTop: 4, alignSelf: "flex-start" },
+	// flexShrink:0 keeps the (possibly menu-hosting) wrapper content-sized — a
+	// stretched native MenuView trigger clips its label to "..".
+	badgeWrap: { flexShrink: 0 },
+	metaFlex: { flexShrink: 1, minWidth: 0 },
 	metaText: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
+		fontSize: 12.5,
 	},
 });
 
-/** Plain (non-interactive) meta line — the tappable variant is built by the
+/** Plain (non-interactive) meta line — a tappable variant is built by the
  * caller and passed as `meta` too. */
 export function IdentityMeta({ children }: { children: string }) {
 	const t = useTokens();

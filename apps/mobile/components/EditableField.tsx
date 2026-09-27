@@ -155,7 +155,7 @@ export function EditableField({
 		return (
 			<View style={styles.container}>
 				{label ? (
-					<Text style={[styles.readLabel, { color: t.faint }]}>{label}</Text>
+					<Text style={[styles.readLabel, { color: t.sub }]}>{label}</Text>
 				) : null}
 				{renderValue ? (
 					renderValue(value)
@@ -174,8 +174,7 @@ export function EditableField({
 		);
 	}
 
-	// Editable: a filled "well" with a trailing pencil. The bare underline it
-	// replaces was indistinguishable from static text at arm's length.
+	// Editable: the read-only row plus a trailing pencil; the whole row is the target.
 	return (
 		<View style={styles.container}>
 			<Pressable
@@ -185,11 +184,7 @@ export function EditableField({
 				// The label overrides child Text for VoiceOver, so the current
 				// content has to be announced as the value.
 				accessibilityValue={{ text: value || placeholder }}
-				style={({ pressed }) => [
-					styles.well,
-					{ backgroundColor: t.card, borderColor: t.lineSoft },
-					pressed && styles.actionPressed,
-				]}
+				style={({ pressed }) => [styles.well, pressed && styles.actionPressed]}
 			>
 				<View style={styles.wellBody}>
 					{label ? (
@@ -222,7 +217,6 @@ const styles = StyleSheet.create({
 		fontFamily: fontFamily.semibold,
 		marginBottom: spacing.xs,
 	},
-	// Read-only twin of the well's label — quieter, and with no fill behind it.
 	readLabel: {
 		fontFamily: fontFamily.medium,
 		fontSize: type.eyebrow,
@@ -233,18 +227,14 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 10,
 		minHeight: touch.min,
-		borderWidth: 1,
-		borderRadius: radii.ctrl,
-		paddingHorizontal: 12,
-		paddingVertical: 9,
 	},
-	wellBody: { flex: 1, minWidth: 0, gap: 2 },
+	wellBody: { flex: 1, minWidth: 0, gap: 3 },
 	wellLabel: {
 		fontFamily: fontFamily.medium,
 		fontSize: type.eyebrow,
 	},
 	value: {
-		fontSize: type.rowTitle,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 	},
 	placeholder: {
@@ -262,7 +252,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 10,
 		minHeight: touch.min,
-		fontSize: type.rowTitle,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
 	},

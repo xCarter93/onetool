@@ -1,16 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ChevronRight, icons } from "lucide-react-native";
-import {
-	fontFamily,
-	radii,
-	recordTint,
-	spacing,
-	touch,
-	tracking,
-	type,
-	useTokens,
-} from "@/lib/theme";
+import { fontFamily, radii, recordTint, spacing, useTokens } from "@/lib/theme";
 import { Badge } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/notification-utils";
 import {
@@ -24,44 +15,22 @@ import {
 // proof that every ActivityIconKey really exists in lucide.
 const ICONS: Record<ActivityIconKey, (typeof icons)[keyof typeof icons]> = icons;
 
-/** Day divider between groups of rows. "Today" / "Yesterday" / "Jul 12". */
-export function ActivityDayHeader({
-	label,
-	count,
-}: {
-	label: string;
-	count: number;
-}) {
-	const t = useTokens();
-	return (
-		<View
-			// Announced as a heading so the day boundary is not silent to VoiceOver.
-			accessibilityRole="header"
-			accessibilityLabel={`${label}, ${count} ${count === 1 ? "event" : "events"}`}
-			style={[styles.dayHeader, { backgroundColor: t.bg }]}
-		>
-			<Text style={[styles.dayLabel, { color: t.faint }]}>{label}</Text>
-			<View style={[styles.dayRule, { backgroundColor: t.lineSoft }]} />
-		</View>
-	);
-}
-
 /**
- * One business event. Tappable only when the underlying record has a mobile
- * detail route (payments / users / the org itself do not) — a row with no
- * destination renders without a chevron and without a button role.
+ * One business event, rendered as a Panel row: type tile, description and
+ * record name, relative-time stamp, chevron. Tappable only when the underlying
+ * record has a mobile detail route (payments / users / the org itself do not).
  */
 export function ActivityRow({
 	activity,
 	nowMs,
 	onPress,
-	last,
+	selected,
 }: {
 	activity: ActivityDisplay;
 	/** Seeded once by the screen; render must stay pure (no Date.now() here). */
 	nowMs: number;
 	onPress?: () => void;
-	last?: boolean;
+	selected?: boolean;
 }) {
 	const t = useTokens();
 	const Glyph = ICONS[activity.icon];
@@ -87,16 +56,11 @@ export function ActivityRow({
 			accessibilityHint={onPress ? "Opens the record" : undefined}
 			style={({ pressed }) => [
 				styles.row,
-				{
-					borderBottomColor: t.lineSoft,
-					borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
-				},
-				pressed && styles.pressed,
+				selected && { backgroundColor: t.frostedBg },
+				pressed && { backgroundColor: t.muted },
 			]}
 		>
-			<View
-				style={[styles.tile, { backgroundColor: tint?.bg ?? t.secondary }]}
-			>
+			<View style={[styles.tile, { backgroundColor: tint?.bg ?? t.secondary }]}>
 				<Glyph size={17} color={glyphColor} />
 			</View>
 			<View style={styles.body}>
@@ -110,43 +74,20 @@ export function ActivityRow({
 					{activity.status ? <Badge status={activity.status} /> : null}
 				</View>
 			</View>
-			<Text style={[styles.stamp, { color: t.faint }]}>{stamp}</Text>
-			{onPress ? <ChevronRight size={16} color={// Informational, not decorative: the chevron is the only cue that this
-					// row navigates while an unlinked neighbour does not, so it owes 3:1.
-					t.checkbox} /> : null}
+			<Text style={[styles.stamp, { color: t.sub }]}>{stamp}</Text>
+			{onPress ? <ChevronRight size={16} color={t.input} strokeWidth={2} /> : null}
 		</Pressable>
 	);
 }
 
 const styles = StyleSheet.create({
-	dayHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: spacing.sm,
-		paddingTop: spacing.lg,
-		paddingBottom: spacing.sm,
-		paddingHorizontal: spacing.xs,
-	},
-	dayLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.eyebrow,
-		letterSpacing: tracking.groupLabel,
-		textTransform: "uppercase",
-	},
-	dayRule: {
-		flex: 1,
-		height: 1,
-	},
 	row: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 11,
-		minHeight: touch.min,
+		minHeight: 56,
 		paddingVertical: 11,
-		paddingHorizontal: spacing.sm,
-	},
-	pressed: {
-		opacity: 0.7,
+		paddingHorizontal: 12,
 	},
 	tile: {
 		width: 32,
@@ -163,21 +104,21 @@ const styles = StyleSheet.create({
 	},
 	description: {
 		fontFamily: fontFamily.medium,
-		fontSize: type.rowTitle,
+		fontSize: 14,
 	},
 	metaRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
+		gap: spacing.sm,
 	},
 	record: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
+		fontSize: 12.5,
 		flexShrink: 1,
 	},
 	stamp: {
 		fontFamily: fontFamily.medium,
-		fontSize: type.xs,
+		fontSize: 11.5,
 		flexShrink: 0,
 	},
 });

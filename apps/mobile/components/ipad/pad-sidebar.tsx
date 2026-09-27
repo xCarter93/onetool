@@ -1,15 +1,6 @@
-import React, { useRef } from "react";
-import {
-	ActionSheetIOS,
-	Alert,
-	findNodeHandle,
-	Image,
-	Platform,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import React, { useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useOrganization, useUser } from "@clerk/expo";
 import {
@@ -17,44 +8,22 @@ import {
 	Bell,
 	Briefcase,
 	CalendarCheck,
-	ChevronDown,
-	Plus,
+	ChevronsUpDown,
 	Route as RouteIcon,
-	Sparkles,
 	Wallet,
 } from "lucide-react-native";
-import { fontFamily, radii, tokens, touch, type, useTokens } from "@/lib/theme";
-import { Avatar } from "@/components/ui";
+import { fontFamily, frame } from "@/lib/theme";
+import { useNotificationData } from "@/lib/use-notification-data";
+import { initialsFrom } from "@/components/frame/rail-header";
+import { SyncStatusRow } from "@/components/offline/sync-status-row";
 
-// 230px persistent iPad sidebar (full variant only — the prototype's `rail`
-// variant was rejected for rotation continuity). Identical in both orientations.
-// Pure chrome: routing for the rest is injected by ipad-shell via props; only the
-// org-switch push is kept inline (it has no shell dependency).
+// Web's workspace sidebar on the graphite rail: brand, org switcher, one nav
+// group, profile and notifications in the footer. Routing is injected by the shell.
 
 export type SidebarTab = "today" | "work" | "money" | "routes" | "activity";
 /** "profile" highlights NO nav row — Profile is reached via the footer. */
 export type SidebarActive = SidebarTab | "profile";
 
-/** One entry of the rail's create menu. The shell builds and permission-filters
- *  these; the rail only renders them (same "pure chrome" split as the nav). */
-export interface CreateItem {
-	key: string;
-	label: string;
-	run: () => void;
-}
-
-interface PadSidebarProps {
-	activeTab: SidebarActive;
-	onNavigate: (tab: SidebarTab) => void;
-	/** Empty → no ＋ at all (nothing this member may create = no dead chrome). */
-	createItems?: CreateItem[];
-	onAssistant: () => void;
-	onProfile: () => void;
-	onNotifications: () => void;
-}
-
-// Mirrors the phone dock's mode set (icon + label wording), plus Activity —
-// the rail has the room the dock does not, so it keeps the feed as a fifth mode.
 const NAV: { id: SidebarTab; label: string; Icon: typeof CalendarCheck }[] = [
 	{ id: "today", label: "Today", Icon: CalendarCheck },
 	{ id: "work", label: "Work", Icon: Briefcase },
@@ -63,15 +32,7 @@ const NAV: { id: SidebarTab; label: string; Icon: typeof CalendarCheck }[] = [
 	{ id: "activity", label: "Activity", Icon: Activity },
 ];
 
-function initialsFrom(name?: string | null): string {
-	if (!name) return "?";
-	const words = name.trim().split(/\s+/);
-	if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-	return words[0].slice(0, 2).toUpperCase();
-}
-
-// Clerk returns roles like "org:admin" — strip the prefix before title-casing,
-// a bare capitalize would render "Org:admin" (see app/(tabs)/profile.tsx bug).
+// Clerk returns roles like "org:admin"; strip the prefix before title-casing.
 function roleLabel(role?: string | null): string {
 	if (!role) return "Member";
 	const bare = role.replace(/^org:/, "");
@@ -81,85 +42,74 @@ function roleLabel(role?: string | null): string {
 export function PadSidebar({
 	activeTab,
 	onNavigate,
-	createItems = [],
-	onAssistant,
 	onProfile,
 	onNotifications,
-}: PadSidebarProps) {
-	const t = useTokens();
+}: {
+	activeTab: SidebarActive;
+	onNavigate: (tab: SidebarTab) => void;
+	onProfile: () => void;
+	onNotifications: () => void;
+}) {
 	const router = useRouter();
-	// The sheet must be anchored to the ＋ or iOS pops it from the screen centre
-	// instead of beside the rail.
-	const createAnchor = useRef<View>(null);
-
-	const openCreateMenu = () => {
-		if (createItems.length === 0) return;
-		if (Platform.OS === "ios") {
-			ActionSheetIOS.showActionSheetWithOptions(
-				{
-					options: [...createItems.map((i) => i.label), "Cancel"],
-					cancelButtonIndex: createItems.length,
-					anchor: findNodeHandle(createAnchor.current) ?? undefined,
-				},
-				(index) => createItems[index]?.run(),
-			);
-		} else {
-			Alert.alert("Create", undefined, [
-				...createItems.map((i) => ({ text: i.label, onPress: i.run })),
-				{ text: "Cancel", style: "cancel" as const },
-			]);
-		}
-	};
 	const { organization, membership } = useOrganization();
 	const { user } = useUser();
+	const notificationData = useNotificationData();
+	const unread = (notificationData?.unreadCount ?? 0) > 0;
+	const [orgLogoFailed, setOrgLogoFailed] = useState(false);
+	const [prevOrgLogo, setPrevOrgLogo] = useState(organization?.imageUrl);
+	if (organization?.imageUrl !== prevOrgLogo) {
+		setPrevOrgLogo(organization?.imageUrl);
+		setOrgLogoFailed(false);
+	}
 
 	const orgName = organization?.name ?? "Personal";
-	const orgInitials = initialsFrom(orgName);
 	const userName = user?.fullName ?? user?.firstName ?? "You";
-	const userInitials = initialsFrom(userName);
-	const role = roleLabel(membership?.role);
 
 	return (
-		<View style={[styles.root, { backgroundColor: t.card, borderRightColor: t.line }]}>
-			{/* Brand block */}
+		<View style={styles.root}>
 			<View style={styles.brand}>
-				<View style={styles.brandRow}>
-					<Image
-						source={require("@/assets/OneTool-wordmark.png")}
-						style={styles.brandLogo}
-						resizeMode="contain"
-						accessibilityRole="image"
-						accessibilityLabel="OneTool"
-					/>
-				</View>
+				<Image
+					source={require("@/assets/OneTool-wordmark.png")}
+					style={styles.brandLogo}
+					tintColor={frame.railText}
+					resizeMode="contain"
+					accessibilityRole="image"
+					accessibilityLabel="OneTool"
+				/>
 			</View>
 
-			{/* Org switcher */}
 			<Pressable
 				onPress={() => router.push("/org-switch" as Href)}
-				style={[styles.orgRow, { borderColor: t.line }]}
+				style={({ pressed }) => [styles.org, pressed && styles.pressed]}
 				accessibilityRole="button"
-				accessibilityLabel="Switch organization"
+				accessibilityLabel={`${orgName}, switch organization`}
 			>
-				{organization?.imageUrl ? (
-					<Image source={{ uri: organization.imageUrl }} style={styles.orgTile} />
+				{organization?.imageUrl && !orgLogoFailed ? (
+					<ExpoImage
+						source={{ uri: organization.imageUrl }}
+						style={styles.orgTile}
+						contentFit="cover"
+						cachePolicy="disk"
+						transition={150}
+						onError={() => setOrgLogoFailed(true)}
+					/>
 				) : (
-					<View style={[styles.orgTile, { backgroundColor: t.primarySolid }]}>
-						<Text style={[styles.orgTileText, { color: tokens.card }]}>
-							{orgInitials}
-						</Text>
+					<View style={[styles.orgTile, styles.orgTileFill]}>
+						<Text style={styles.orgTileText}>{initialsFrom(orgName)}</Text>
 					</View>
 				)}
-				<View style={{ flex: 1, minWidth: 0 }}>
-					<Text style={[styles.orgName, { color: t.ink }]} numberOfLines={1}>
+				<View style={styles.flexText}>
+					<Text style={styles.orgName} numberOfLines={1}>
 						{orgName}
 					</Text>
-					<Text style={[styles.orgSub, { color: t.faint }]}>Switch workspace</Text>
+					<Text style={styles.orgSub} numberOfLines={1}>
+						{roleLabel(membership?.role)}
+					</Text>
 				</View>
-				<ChevronDown size={15} color={t.sub} />
+				<ChevronsUpDown size={15} color={frame.railMuted} strokeWidth={2} />
 			</Pressable>
 
-			{/* Nav stack */}
+			<Text style={styles.groupLabel}>Workspace</Text>
 			<View style={styles.nav} accessibilityRole="tablist">
 				{NAV.map(({ id, label, Icon }) => {
 					const active = activeTab === id;
@@ -167,24 +117,19 @@ export function PadSidebar({
 						<Pressable
 							key={id}
 							onPress={() => onNavigate(id)}
-							style={[
+							style={({ pressed }) => [
 								styles.navRow,
-								active && { backgroundColor: t.secondary },
+								(active || pressed) && { backgroundColor: frame.railRaised },
 							]}
 							accessibilityRole="tab"
 							accessibilityLabel={label}
 							accessibilityState={{ selected: active }}
 						>
-							<Icon size={21} color={active ? t.primaryInk : t.sub} />
+							<Icon size={18} color={active ? frame.railAccent : frame.railMuted} strokeWidth={2} />
 							<Text
 								style={[
 									styles.navLabel,
-									{
-										color: t.ink,
-										fontFamily: active
-											? fontFamily.semibold
-											: fontFamily.regular,
-									},
+									{ fontFamily: active ? fontFamily.semibold : fontFamily.medium },
 								]}
 							>
 								{label}
@@ -194,70 +139,38 @@ export function PadSidebar({
 				})}
 			</View>
 
-			{/* Assistant + create sit OUTSIDE the tablist — buttons, not tabs — and
-			    after the flex:1 nav, which is what pins them to the rail bottom.
-			    Together they are the rail's answer to the phone's speed-dial FAB
-			    (§6: no floating FAB on iPad). The ＋ anchors its own action sheet. */}
-			<View style={styles.actionRow}>
-				<Pressable
-					onPress={onAssistant}
-					style={[
-						styles.assistantRow,
-						{ backgroundColor: t.frostedBg, borderColor: t.frostedBorder },
-					]}
-					accessibilityRole="button"
-					accessibilityLabel="Assistant"
-				>
-					<Sparkles size={20} color={t.frostedInk} />
-					<Text style={[styles.assistantLabel, { color: t.frostedInk }]}>
-						Assistant
-					</Text>
-				</Pressable>
-				{createItems.length > 0 ? (
-					<Pressable
-						ref={createAnchor}
-						onPress={openCreateMenu}
-						style={({ pressed }) => [
-							styles.createBtn,
-							{ backgroundColor: t.secondary },
-							pressed && { opacity: 0.85 },
-						]}
-						accessibilityRole="button"
-						accessibilityLabel="Create"
-					>
-						<Plus size={22} color={t.primaryInk} strokeWidth={2.2} />
-					</Pressable>
-				) : null}
-			</View>
-
-			{/* Footer: profile + bell, sibling Pressables (not nested). */}
-			<View style={[styles.footer, { borderTopColor: t.line }]}>
+			<SyncStatusRow style={styles.sync} />
+			<View style={styles.footer}>
 				<Pressable
 					onPress={onProfile}
-					style={styles.profileArea}
+					style={({ pressed }) => [styles.profile, pressed && styles.pressed]}
 					accessibilityRole="button"
 					accessibilityLabel="Profile"
 				>
-					<Avatar
-						text={userInitials}
-						size={40}
-						imageUrl={user?.hasImage ? user.imageUrl : null}
-					/>
-					<View style={{ flex: 1, minWidth: 0 }}>
-						<Text style={[styles.userName, { color: t.ink }]} numberOfLines={1}>
+					<View style={styles.avatar}>
+						{user?.hasImage ? (
+							<ExpoImage source={{ uri: user.imageUrl }} style={styles.avatarImage} />
+						) : (
+							<Text style={styles.avatarText}>{initialsFrom(userName)}</Text>
+						)}
+					</View>
+					<View style={styles.flexText}>
+						<Text style={styles.userName} numberOfLines={1}>
 							{userName}
 						</Text>
-						<Text style={[styles.userRole, { color: t.sub }]}>{role}</Text>
+						<Text style={styles.orgSub} numberOfLines={1}>
+							{user?.primaryEmailAddress?.emailAddress ?? ""}
+						</Text>
 					</View>
 				</Pressable>
 				<Pressable
 					onPress={onNotifications}
 					accessibilityRole="button"
-					accessibilityLabel="Notifications"
-					style={styles.bellWrap}
+					accessibilityLabel={unread ? "Notifications, unread" : "Notifications"}
+					style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
 				>
-					<Bell size={20} color={t.sub} />
-					<View style={[styles.bellDot, { backgroundColor: tokens.danger }]} />
+					<Bell size={18} color={frame.railMuted} strokeWidth={2} />
+					{unread ? <View style={styles.bellDot} /> : null}
 				</Pressable>
 			</View>
 		</View>
@@ -266,142 +179,156 @@ export function PadSidebar({
 
 const styles = StyleSheet.create({
 	root: {
-		width: 230,
+		width: 232,
 		flexShrink: 0,
-		height: "100%",
-		borderRightWidth: 1,
-		flexDirection: "column",
+		backgroundColor: frame.rail,
+		paddingHorizontal: 8,
 	},
 	brand: {
-		paddingTop: 40,
-		paddingBottom: 14,
-		paddingHorizontal: 18,
-		overflow: "hidden",
+		paddingHorizontal: 8,
+		paddingTop: 12,
+		paddingBottom: 16,
 	},
-	brandRow: {
-		flexDirection: "row",
-		alignItems: "center",
-	},
+	// Explicit w/h: Fabric ignores height when paired with aspectRatio. 908x237 source.
 	brandLogo: {
-		// Explicit definite w/h (not aspectRatio — Fabric ignores height when
-		// paired with aspectRatio here). 908x237 source ≈ 3.83:1 → 104x27.
-		width: 104,
-		height: 27,
+		width: 96,
+		height: 25,
 	},
-	orgRow: {
-		marginHorizontal: 12,
-		marginBottom: 10,
+	org: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
-		paddingVertical: 9,
-		paddingHorizontal: 10,
-		borderRadius: radii.card,
+		paddingHorizontal: 8,
+		paddingVertical: 8,
+		borderRadius: 4,
 		borderWidth: 1,
+		borderColor: frame.railBorder,
 	},
 	orgTile: {
 		width: 30,
 		height: 30,
-		borderRadius: radii.md,
+		borderRadius: 6,
+	},
+	orgTileFill: {
+		width: undefined,
+		height: undefined,
+		minWidth: 30,
+		minHeight: 30,
 		alignItems: "center",
 		justifyContent: "center",
-		flexShrink: 0,
+		backgroundColor: frame.railAccent,
 	},
 	orgTileText: {
 		fontFamily: fontFamily.bold,
-		fontSize: type.sm,
+		fontSize: 12,
+		color: frame.railAccentInk,
+	},
+	flexText: {
+		flex: 1,
+		minWidth: 0,
 	},
 	orgName: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
+		fontSize: 14,
+		color: frame.railText,
 	},
 	orgSub: {
 		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
+		fontSize: 12,
+		color: frame.railMuted,
+		marginTop: 1,
+	},
+	groupLabel: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 10,
+		letterSpacing: 0.8,
+		textTransform: "uppercase",
+		color: frame.railMuted,
+		paddingHorizontal: 8,
+		marginTop: 20,
+		marginBottom: 6,
 	},
 	nav: {
 		flex: 1,
-		paddingVertical: 4,
-		paddingHorizontal: 12,
-		gap: 4,
+		gap: 2,
 	},
 	navRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
-		minHeight: touch.min,
-		paddingVertical: 11,
-		paddingHorizontal: 13,
-		borderRadius: radii.card,
+		gap: 10,
+		minHeight: 40,
+		paddingHorizontal: 10,
+		borderRadius: 4,
 	},
 	navLabel: {
-		fontSize: type.body,
+		fontSize: 14,
+		color: frame.railText,
 	},
-	actionRow: {
-		flexDirection: "row",
-		alignItems: "stretch",
-		gap: 8,
-		paddingHorizontal: 12,
+	sync: {
+		paddingHorizontal: 10,
 		paddingBottom: 10,
-	},
-	createBtn: {
-		width: touch.min,
-		height: touch.min,
-		borderRadius: radii.ctrl,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	assistantRow: {
-		flex: 1,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		minHeight: touch.min,
-		paddingVertical: 12,
-		borderRadius: radii.ctrl,
-		borderWidth: 1,
-	},
-	assistantLabel: {
-		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
 	},
 	footer: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 11,
-		padding: 16,
+		gap: 4,
 		borderTopWidth: 1,
+		borderTopColor: frame.railBorder,
+		paddingVertical: 12,
 	},
-	profileArea: {
+	profile: {
 		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 11,
+		gap: 10,
 		minWidth: 0,
+		padding: 6,
+		borderRadius: 4,
+	},
+	avatar: {
+		width: 32,
+		height: 32,
+		borderRadius: 16,
+		overflow: "hidden",
+		backgroundColor: frame.railRaised,
+		borderWidth: 1,
+		borderColor: frame.railBorder,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	avatarImage: {
+		width: 32,
+		height: 32,
+	},
+	avatarText: {
+		fontFamily: fontFamily.semibold,
+		fontSize: 12,
+		color: frame.railText,
 	},
 	userName: {
 		fontFamily: fontFamily.semibold,
-		fontSize: type.body,
+		fontSize: 13,
+		color: frame.railText,
 	},
-	userRole: {
-		fontFamily: fontFamily.regular,
-		fontSize: type.meta,
-	},
-	bellWrap: {
-		width: touch.min,
-		height: touch.min,
+	bell: {
+		width: 40,
+		height: 40,
+		borderRadius: 4,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	bellDot: {
 		position: "absolute",
-		// Centers on the 20px icon's top-right corner within the 44px touch box
-		// ((44-20)/2 = 12 icon inset, minus half the 8px dot).
-		top: 8,
-		right: 8,
-		width: 8,
-		height: 8,
-		borderRadius: radii.xs,
+		top: 10,
+		right: 10,
+		width: 7,
+		height: 7,
+		borderRadius: 4,
+		backgroundColor: frame.railAlert,
+		borderWidth: 1.5,
+		borderColor: frame.rail,
+	},
+	pressed: {
+		backgroundColor: frame.railRaised,
 	},
 });

@@ -1,13 +1,13 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { radii, touch, useTokens } from "@/lib/theme";
-import { SPINE } from "@/components/today/agenda-row";
 
 /**
- * Shaped like the real body: the "Next up" lead card, then a group label bar and
- * a card of timeline rows (spine, time rail, two text lines), then a shorter
- * second group. Static — a pulse at this frequency (every Today open) is noise,
- * not feedback.
+ * Shaped like the real body: the "Next up" lead card, then ONE bordered panel —
+ * a group-label bar, a few timeline rows (time rail, two text lines),
+ * another group-label bar, a couple more rows — matching the merged panel
+ * `DayPlanView` renders. Static — a pulse at this frequency (every Today open)
+ * is noise, not feedback.
  */
 export function ScheduleSkeleton() {
 	const t = useTokens();
@@ -16,33 +16,25 @@ export function ScheduleSkeleton() {
 		<View style={[styles.line, { width, height, backgroundColor: t.lineSoft }]} />
 	);
 
-	const group = (rows: number, labelWidth: number) => (
-		<View style={styles.group}>
-			{bar(labelWidth, 9)}
-			<View
-				style={[styles.card, { backgroundColor: t.card, borderColor: t.line }]}
-			>
-				{Array.from({ length: rows }, (_, i) => (
-					<View
-						key={i}
-						style={[
-							styles.row,
-							{ borderLeftColor: t.lineSoft },
-							i < rows - 1 && {
-								borderBottomWidth: 1,
-								borderBottomColor: t.lineSoft,
-							},
-						]}
-					>
-						<View style={styles.rail}>{bar(40, 11)}</View>
-						<View style={styles.body}>
-							{bar("58%", 12)}
-							{bar("34%", 10)}
-						</View>
-						<View style={[styles.box, { backgroundColor: t.lineSoft }]} />
-					</View>
-				))}
+	const groupLabel = (width: number) => (
+		<View style={[styles.groupLabel, { backgroundColor: t.muted }]}>
+			{bar(width, 9)}
+		</View>
+	);
+
+	const row = (last: boolean) => (
+		<View
+			style={[
+				styles.row,
+				!last && { borderBottomWidth: 1, borderBottomColor: t.lineSoft },
+			]}
+		>
+			<View style={styles.rail}>{bar(40, 11)}</View>
+			<View style={styles.body}>
+				{bar("58%", 12)}
+				{bar("34%", 10)}
 			</View>
+			<View style={[styles.box, { backgroundColor: t.lineSoft }]} />
 		</View>
 	);
 
@@ -58,7 +50,6 @@ export function ScheduleSkeleton() {
 					{
 						backgroundColor: t.card,
 						borderColor: t.line,
-						borderLeftColor: t.lineSoft,
 					},
 				]}
 			>
@@ -67,8 +58,15 @@ export function ScheduleSkeleton() {
 				{bar("62%", 13)}
 				{bar("38%", 10)}
 			</View>
-			{group(3, 76)}
-			{group(2, 58)}
+			<View style={[styles.panel, { backgroundColor: t.card, borderColor: t.line }]}>
+				{groupLabel(76)}
+				{row(false)}
+				{row(false)}
+				{row(false)}
+				{groupLabel(58)}
+				{row(false)}
+				{row(true)}
+			</View>
 		</View>
 	);
 }
@@ -80,25 +78,24 @@ const styles = StyleSheet.create({
 	lead: {
 		gap: 7,
 		borderWidth: 1,
-		borderLeftWidth: SPINE,
 		borderRadius: radii.card,
 		paddingVertical: 15,
 		paddingHorizontal: 14,
 	},
-	group: {
-		gap: 7,
-	},
-	card: {
+	panel: {
 		borderWidth: 1,
 		borderRadius: radii.card,
 		overflow: "hidden",
+	},
+	groupLabel: {
+		paddingHorizontal: 14,
+		paddingVertical: 8,
 	},
 	row: {
 		flexDirection: "row",
 		alignItems: "center",
 		minHeight: touch.min,
-		borderLeftWidth: SPINE,
-		paddingLeft: 11,
+		paddingLeft: 14,
 		paddingRight: 14,
 		gap: 10,
 	},

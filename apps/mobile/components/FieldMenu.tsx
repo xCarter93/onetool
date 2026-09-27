@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { MenuView } from "@expo/ui/community/menu";
-import { ChevronDown } from "lucide-react-native";
-import { fontFamily, type, radii, useTokens } from "@/lib/theme";
+import { ChevronsUpDown } from "lucide-react-native";
+import { fontFamily, radii, useTokens } from "@/lib/theme";
 
 export interface FieldMenuOption {
 	value: string;
@@ -39,6 +39,7 @@ export function FieldMenu({
 	children,
 }: FieldMenuProps) {
 	const t = useTokens();
+	const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 	// No menu to open when disabled or empty — render the trigger as an inert affordance.
 	const inert = disabled || options.length === 0;
 
@@ -49,45 +50,51 @@ export function FieldMenu({
 			style={[
 				styles.select,
 				{
-					borderColor: t.border,
+					borderColor: t.input,
 					backgroundColor: t.card,
 					opacity: inert ? 0.5 : 1,
 				},
 			]}
 		>
 			<Text
-				style={[styles.selectText, { color: placeholder ? t.faint : t.ink }]}
+				style={[styles.selectText, { color: placeholder ? t.sub : t.ink }]}
 				numberOfLines={1}
 			>
 				{label}
 			</Text>
-			<ChevronDown size={18} color={t.sub} />
+			<ChevronsUpDown size={16} color={t.sub} />
 		</View>
 	);
 
 	if (inert) return <>{trigger}</>;
 
-	// The SwiftUI menu host under-measures its RN child, so making it the
-	// laid-out row lets it displace whatever follows (labels vanish under the
-	// painted overflow). Instead the trigger owns the layout and the host is
-	// absolutely overlaid on top — its measurement can no longer move siblings;
-	// the transparent child is the tap target and menu anchor.
+	// The trigger owns the layout and the menu host is overlaid on it. The host
+	// sizes itself to its child, so the transparent anchor takes the trigger's
+	// measured size; a flex anchor would collapse to 0x0 and swallow no taps.
 	return (
-		<View collapsable={false}>
+		<View
+			collapsable={false}
+			onLayout={(e) => {
+				const { width, height } = e.nativeEvent.layout;
+				if (width !== size?.width || height !== size?.height) setSize({ width, height });
+			}}
+		>
 			{trigger}
-			<View style={StyleSheet.absoluteFill}>
-				<MenuView
-					title={title}
-					onPressAction={({ nativeEvent }) => onSelect(nativeEvent.event)}
-					actions={options.map((o) => ({
-						id: o.value,
-						title: o.label,
-						state: o.value === value ? "on" : "off",
-					}))}
-				>
-					<View style={styles.anchor} />
-				</MenuView>
-			</View>
+			{size ? (
+				<View style={StyleSheet.absoluteFill}>
+					<MenuView
+						title={title}
+						onPressAction={({ nativeEvent }) => onSelect(nativeEvent.event)}
+						actions={options.map((o) => ({
+							id: o.value,
+							title: o.label,
+							state: o.value === value ? "on" : "off",
+						}))}
+					>
+						<View style={size} />
+					</MenuView>
+				</View>
+			) : null}
 		</View>
 	);
 }
@@ -98,17 +105,14 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		borderWidth: 1,
-		borderRadius: radii.lg,
-		paddingHorizontal: 14,
-		paddingVertical: 14,
+		borderRadius: radii.ctrl,
+		paddingHorizontal: 12,
+		minHeight: 44,
 	},
 	selectText: {
 		flex: 1,
-		fontSize: type.h4,
+		fontSize: 16,
 		fontFamily: fontFamily.regular,
 		marginRight: 8,
-	},
-	anchor: {
-		flex: 1,
 	},
 });

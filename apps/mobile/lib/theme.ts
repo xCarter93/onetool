@@ -42,11 +42,15 @@ export const fontFamily = {
 // Palette — the single token source. Literal hex, mockup `--app-*` variables.
 // ----------------------------------------------------------------------------
 export const tokens = {
-	// Brand / accent — actions and active states ONLY, never chrome decoration.
+	// `brand` is the logo blue — marketing/mark only, never an action color (it's
+	// 2.7:1 with white, same AA-fail reason web keeps `--brand` separate from
+	// `--primary`). `accent`/`primary`/`primaryInk`/`ring` are the readable action
+	// blue, re-pointed to web's `--primary` #0073ad (5.18:1 with white, vs. the
+	// old #00a6f4/#0084d1 shared value which was 2.7:1/4.02:1 as text).
 	brand: "#00a6f4",
-	accent: "#00a6f4",
-	primary: "#00a6f4",
-	primaryInk: "#0084d1", // active-tab label, pressed states
+	accent: "#0073ad",
+	primary: "#0073ad",
+	primaryInk: "#0073ad", // active-tab label, pressed states
 	primaryTint: "#e6f5fd", // soft blue fill behind primary glyphs
 	/** @deprecated Decoration-era aliases. New code should reach for `frosted*`,
 	 * `primarySolid` or `primaryInk` — a bare `accent*` tint is how sky blue got
@@ -55,11 +59,11 @@ export const tokens = {
 	accentSoft: "#00a6f41A", // 10% blue
 	accentMid: "#00a6f433", // 20% blue
 
-	// "Frosted blue" primary actions — parity with web's `.cn-button-variant-default`
-	// (`bg-primary/10 text-primary border-primary/30 shadow-sm backdrop-blur-sm`).
-	// The label is a DEEPER blue than web's `text-primary`: #00a6f4 on the 10% tint
-	// is only 2.4:1, which fails AA and is unreadable in sunlight. #0369a1 keeps the
-	// same blue family at 5.35:1.
+	// "Frosted blue" tinted actions. Web's `.cn-button-variant-default` moved to a
+	// SOLID fill (app-theme.css `--primary` #0073ad / `--primary-fg` #fff) — this
+	// tint is now the TINTED/secondary treatment only, kept for call sites that
+	// still reference it directly (list-row selection, section-header links).
+	// #0369a1 keeps the same blue family at 5.35:1 on the tint.
 	// OPAQUE since Slice 8: the old alpha values (#00a6f4 @ 10/15/30%) let the dot
 	// grid and anything underneath ghost through every frosted button. These are
 	// those same tints pre-composited over `bg` #f6f7f8 — identical hue, no
@@ -69,19 +73,27 @@ export const tokens = {
 	frostedBgPressed: "#d1ebf7", // primary @ 15% over bg (web's hover)
 	frostedBorder: "#acdff7", // primary @ 30% over bg
 	frostedInk: "#0369a1",
-	/** Solid blue fills that carry WHITE content. #00a6f4 + white is 2.7:1 (under
-	 * even the 3:1 non-text floor) and #0084d1 is 4.0:1 — fine for a glyph but
-	 * short of the 4.5:1 a solid button's label needs. #0072b5 is 5.15:1, so one
-	 * token covers both the FAB and text-bearing solids. */
-	primarySolid: "#0072b5",
+	/** Solid blue fill for the primary action — exact web `--primary` parity
+	 * (#0073ad, 5.18:1 with white text). Covers the FAB and every solid button. */
+	primarySolid: "#0073ad",
+	/** Pressed-state darken of `primarySolid` (6.94:1 with white). */
+	primarySolidPressed: "#005f8e",
 
-	// Semantic
-	success: "#0a9d6c",
+	// Semantic — aligned with web's status pairs (app-theme.css) where the web
+	// value itself clears 4.5:1 as text; kept mobile's own value where the web
+	// one doesn't (mobile's text uses are broader than web's, e.g. money amounts).
+	// #0a9d6c was 3.47:1 as text on `card` — fails AA. Web's `success` #24813e is
+	// 4.90:1 on card / 4.57:1 on bg — adopted directly.
+	success: "#24813e",
+	// Web's `warning` #b86a00 is 3.84:1 on bg — fails AA as text, so kept
+	// mobile's own darker #b45309 (5.02:1 on card / 4.72:1 on bg).
 	warning: "#b45309",
 	warningBg: "#fef7ec",
 	warningLine: "#f3e3c8",
-	danger: "#dc2626",
-	destructive: "#dc2626",
+	// Web's `danger` #cf263c clears AA with more margin (5.26:1 card / 4.90:1 bg)
+	// than mobile's old #dc2626 (4.83:1) — adopted directly.
+	danger: "#cf263c",
+	destructive: "#cf263c",
 	info: "#075985",
 
 	// Ink / text — the whole ramp is AA-verified against BOTH `card` (#fff) and
@@ -91,31 +103,34 @@ export const tokens = {
 	fg: "#17181a",
 	foreground: "#17181a",
 	ink: "#17181a", // 17.8:1 — primary
-	sub: "#5f646b", // 5.96 / 5.56 — secondary, metadata
-	muted2: "#5f646b",
-	faint: "#6b7075", // 5.00 / 4.66 — tertiary: eyebrows, group labels
-	mutedForeground: "#5f646b",
+	// Web workspace muted-fg: 5.96 on card, 5.26 on canvas, 4.94 on secondary.
+	sub: "#586573",
+	muted2: "#586573",
+	// #6b7075 drops to 4.41 on the #eef1f5 canvas, so tertiary text shares `sub`.
+	faint: "#586573",
+	mutedForeground: "#586573",
 	warningFg: "#b45309",
 	/** NON-TEXT decoration only (chevrons redundant with a labelled row). Never
 	 * put text in this color — it is 2.6:1. */
 	faintDecor: "#9aa0a6",
 
 	// Surfaces
-	bg: "#f6f7f8",
-	background: "#f6f7f8",
+	// Web workspace canvas (`--workspace-ground`) and its panel/segment fills.
+	bg: "#eef1f5",
+	background: "#eef1f5",
 	card: "#ffffff",
 	popover: "#ffffff",
-	muted: "#f6f7f8",
-	secondary: "#eceef0", // segmented track
+	muted: "#eef1f5",
+	secondary: "#e6eaf0", // selected segment, count chips, table heads
 	sidebar: "#ffffff",
-	surface: "#f6f7f8",
+	surface: "#eef1f5",
 
-	// Lines
-	line: "#e4e6e8", // card / control borders
-	lineSoft: "#edeff1", // in-card row dividers (hairlines)
-	border: "#e4e6e8",
-	input: "#e4e6e8",
-	ring: "#0084d1",
+	// Lines (web workspace `--border` / `--workspace-rule` / `--input`)
+	line: "#cbd3de", // panel / control borders
+	lineSoft: "#dce5ec", // in-panel row dividers (hairlines)
+	border: "#cbd3de",
+	input: "#8592a3", // control outlines (3.16:1 on card)
+	ring: "#0073ad", // web `--ring` parity
 	// Control boundaries and information-carrying dots need 3:1. The mockup's
 	// #c8cdd2 is 1.6:1 — an effectively invisible checkbox.
 	checkbox: "#8b9096", // 3.22 / 3.00
@@ -139,10 +154,48 @@ export function useTokens() {
 }
 
 // ----------------------------------------------------------------------------
-// 3.0 premium chrome — ink command hero + floating glass dock. Values are the
-// design canvas's literals (Mobile App Redesign 1a/1m); components must bind
-// these, never inline the hex. White-on-heroInk text tiers are AA-checked:
-// .92 white 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1 (all pass at their sizes).
+// Picture frame — web's graphite rail around a rounded canvas card
+// (workspace-theme.css). The rail owns the status bar, header, sync line,
+// context tier and tab row; screens render inside the canvas. Dark-mode values
+// live beside the light ones so the swap is a lookup, not a hunt.
+// Rail text tiers on `rail`: text 13.3:1, muted 7.8:1, accent 8.5:1.
+// ----------------------------------------------------------------------------
+export const frame = {
+	rail: "#242424",
+	railDark: "#151515",
+	railRaised: "#363636", // hover/active fill, composer field, secondary tray buttons
+	railBorder: "#484848",
+	railText: "#ededed",
+	railMuted: "#b8b8b8",
+	/** Rail-scoped primary (web `.workspace-chrome --primary`): active tab glyph,
+	 *  sparkle, filled tray action. Pairs with `railAccentInk` text (9.8:1). */
+	railAccent: "#65caff",
+	railAccentInk: "#171717",
+	/** Notification dot, ringed with `rail` so it reads on the button. */
+	railAlert: "#fb2c36",
+	/** Status dots on the rail (non-text, 3:1+). */
+	railSuccess: "#4ade80",
+	railWarning: "#fbbf24",
+	railDanger: "#f87171",
+	canvas: tokens.bg,
+	canvasRadius: 16,
+	/** Canvas inset from the screen edge, so the rail shows down both sides. */
+	canvasInset: 8,
+	/** Top notch: two 26×31 ogee curves around a rail-colored label. */
+	notchHeight: 31,
+	notchCurve: 26,
+	headerHeight: 44,
+	headerButton: 36,
+	/** Compact tab row and the tier above it. */
+	tabRowHeight: 36,
+	tierHeight: 46,
+	/** 2px active indicator under a selected segment or tab (decor only). */
+	indicator: tokens.brand,
+} as const;
+
+// ----------------------------------------------------------------------------
+// Deep-ink launch palette (launch overlay only). White-on-ink text tiers are
+// AA-checked: .92 15.2:1, .75 10.1:1, .55 5.5:1, .5 4.6:1.
 // ----------------------------------------------------------------------------
 export const hero = {
 	/** Deep-ink band + sign-in root — the dark counterpart of the brand blue. */
@@ -172,6 +225,9 @@ export const hero = {
 	barSoft: "rgba(255,255,255,.22)",
 	/** Notification dot (bordered with `ink` so it reads on the frosted tile). */
 	alertDot: "#ff5d5d",
+	/** Status dots on ink (decor, 3:1+ non-text contrast). */
+	statusSuccess: "#4ade80",
+	statusWarning: "#fbbf24",
 	/** Bottom corner radius of the band. */
 	radius: 28,
 	/** Sign-in glass card fill — lighter ink so the glass lifts off the scrim. */
@@ -186,31 +242,6 @@ export const hero = {
 	],
 } as const;
 
-export const dock = {
-	/** Floating white pill. Opaque: any alpha lets scrolling content ghost
-	 *  through on device (far more visible than in the simulator). */
-	bg: "#ffffff",
-	border: "rgba(23,24,26,.08)",
-	shadow: "0 12px 32px rgba(15,30,40,.16)",
-	height: 60,
-	radius: 30,
-	sideInset: 16,
-	bottomInset: 14,
-	/** Orb: 50px gradient squircle, risen 16px above the pill's top edge. */
-	orbSize: 50,
-	orbRise: 16,
-	orbRadius: 18,
-	orbRing: "#ffffff",
-	orbGradient: ["#00a6f4", "#0072b5"] as [string, string],
-} as const;
-
-/**
- * Scroll clearance for content that runs under the floating dock:
- * bottomInset + height + orb rise + slack. Screens inside (tabs) add this to
- * their scroll padding instead of hardcoding.
- */
-export const DOCK_CLEARANCE =
-	dock.bottomInset + dock.height + dock.orbRise + 12;
 
 // ----------------------------------------------------------------------------
 // Badge tones — soft-tint pairs, quieter than the old saturated pills.
@@ -317,30 +348,30 @@ export const spacing = {
 } as const;
 
 // ----------------------------------------------------------------------------
-// Radii — the visual-tightening core. Cards 12, controls 8; nothing above 20
+// Radii — web workspace parity: panels 8, controls 4; nothing above 20
 // except pills. The old soft 20/24/28 values are re-pointed, not deleted, so
 // existing callers tighten without edits.
 // ----------------------------------------------------------------------------
 export const radii = {
 	xs: 4,
-	sm: 6,
-	md: 8,
+	sm: 4,
+	md: 4,
 	lg: 8,
-	xl: 10,
-	"2xl": 12,
-	"3xl": 12,
-	"4xl": 14,
-	// semantic aliases — prefer these in new code
-	card: 12,
-	ctrl: 8,
+	xl: 8,
+	"2xl": 8,
+	"3xl": 8,
+	"4xl": 8,
+	// semantic aliases — prefer these in new code. Web: controls 4, panels 8.
+	card: 8,
+	ctrl: 4,
 	chip: 999,
 	pill: 999,
 	sheet: 20, // bottom-sheet top corners
 	fab: 18,
 	// legacy names (were 20 / 14 / 28)
-	r: 12,
-	rSm: 10,
-	rLg: 12,
+	r: 8,
+	rSm: 4,
+	rLg: 8,
 } as const;
 
 // Legacy `radius` export — now a pure alias of `radii` so the two maps can
@@ -392,7 +423,7 @@ export const shadow = {
 	/** @deprecated Cards are flat now (border only) — `ui/card.tsx` no longer uses
 	 * this. Six pre-P1 screens still do; they lose it as P2 rewrites them. */
 	card: "0 1px 2px rgba(23,24,26,0.04)",
-	fab: "0 8px 20px -6px rgba(0,132,209,0.55)",
+	fab: "0 8px 20px -6px rgba(0,115,173,0.55)", // primarySolid glow
 	sheet: "0 -8px 32px rgba(15,30,40,0.16)",
 	floatChip: "0 2px 10px rgba(0,0,0,0.08)",
 	segmented: "0 1px 2px rgba(0,0,0,0.06)",
@@ -434,24 +465,6 @@ export const styles = StyleSheet.create({
 		padding: 14,
 		borderWidth: 1,
 		borderColor: tokens.line,
-	},
-
-	// Frosted-blue primary — parity with web's default button variant.
-	primaryButton: {
-		backgroundColor: tokens.frostedBg,
-		borderWidth: 1,
-		borderColor: tokens.frostedBorder,
-		borderRadius: radii.ctrl,
-		minHeight: 44,
-		paddingVertical: 12,
-		paddingHorizontal: spacing.md,
-		alignItems: "center" as const,
-		justifyContent: "center" as const,
-	},
-	primaryButtonText: {
-		color: tokens.frostedInk,
-		fontSize: type.body,
-		fontFamily: fontFamily.semibold,
 	},
 
 	input: {

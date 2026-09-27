@@ -127,6 +127,65 @@ describe("payments.recordManualPayment", () => {
 		expect(invoice?.status).toBe("draft");
 	});
 
+	it("idempotencyKey: a lost-ack replay of a partial payment settles once, not twice", async () => {
+		const { asUser, invoiceId, total, dueDate } = await seed({ total: 500 });
+		await asUser.mutation(api.payments.configurePayments, {
+			invoiceId,
+			payments: [
+				{ paymentAmount: total, dueDate, description: "Full Payment", sortOrder: 0 },
+			],
+		});
+
+		const call = () =>
+			asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 200,
+				method: "cash",
+				idempotencyKey: "partial-payment-1",
+			});
+
+		const first = await call();
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const second = await call(); // client never saw the first response and retried
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(second).toEqual(first);
+		expect(second).toEqual({ invoicePaid: false, remaining: 300 });
+
+		const rows = await rowsFor(invoiceId);
+		// Without the receipt guard, the replay would settle a second 200 out of
+		// the 300 remaining — the sum-to-total invariant is what catches that.
+		expect(rows.reduce((s, r) => s + r.paymentAmount, 0)).toBe(500);
+		expect(rows.filter((r) => r.status === "paid").length).toBe(1);
+	});
+
+	it("idempotencyKey reused with different arguments throws IDEMPOTENCY_KEY_REUSED", async () => {
+		const { asUser, invoiceId, total, dueDate } = await seed({ total: 500 });
+		await asUser.mutation(api.payments.configurePayments, {
+			invoiceId,
+			payments: [
+				{ paymentAmount: total, dueDate, description: "Full Payment", sortOrder: 0 },
+			],
+		});
+
+		await asUser.mutation(api.payments.recordManualPayment, {
+			invoiceId,
+			amount: 200,
+			method: "cash",
+			idempotencyKey: "dup-key",
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await expect(
+			asUser.mutation(api.payments.recordManualPayment, {
+				invoiceId,
+				amount: 100, // different amount, same key
+				method: "cash",
+				idempotencyKey: "dup-key",
+			})
+		).rejects.toThrow(/IDEMPOTENCY_KEY_REUSED/);
+	});
+
 	it("settles installments in order and splits the row the amount lands inside", async () => {
 		const { asUser, invoiceId, dueDate } = await seed({ total: 500 });
 		await asUser.mutation(api.payments.configurePayments, {

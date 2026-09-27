@@ -9,20 +9,27 @@ import {
 	ActivityIndicator,
 } from "react-native";
 import { useState, useRef } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
-import { useAuth, useOrganization } from "@clerk/expo";
+import { useMutation, useAction } from "convex/react";
+import { useOrganization } from "@clerk/expo";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { colors, fontFamily, spacing, radius } from "@/lib/theme";
 import { Send, Paperclip, X } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { pickUpload, uploadToConvex } from "@/lib/upload";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import { useCachedQuery } from "@/lib/offline/useCachedQuery";
+import { saveOffline, useOnlineAction } from "@/lib/offline/hooks";
+import { useOffline } from "@/lib/offline/OfflineProvider";
 
 interface MentionInputProps {
 	entityType: "client" | "project" | "quote";
 	entityId: string;
 	entityName: string;
 	onMentionCreated?: () => void;
+	initialMessage?: string;
+	onMessageChange?: (text: string) => void;
+	initialMentionedUsers?: { id: Id<"users">; name: string }[];
+	onMentionedUsersChange?: (users: { id: Id<"users">; name: string }[]) => void;
 }
 
 interface AttachmentFile {
@@ -41,13 +48,28 @@ export function MentionInput({
 	entityId,
 	entityName,
 	onMentionCreated,
+	initialMessage = "",
+	onMessageChange,
+	initialMentionedUsers = [],
+	onMentionedUsersChange,
 }: MentionInputProps) {
-	const [message, setMessage] = useState("");
+	const [message, setMessage] = useState(initialMessage);
 	const [showUserList, setShowUserList] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [mentionedUsers, setMentionedUsers] = useState<
-		Array<{ id: Id<"users">; name: string }>
-	>([]);
+	const [mentionedUsers, setMentionedUsersState] = useState<
+		{ id: Id<"users">; name: string }[]
+	>(initialMentionedUsers);
+	const setMentionedUsers = (
+		updater:
+			| { id: Id<"users">; name: string }[]
+			| ((
+					prev: { id: Id<"users">; name: string }[]
+			  ) => { id: Id<"users">; name: string }[])
+	) => {
+		const next = typeof updater === "function" ? updater(mentionedUsers) : updater;
+		setMentionedUsersState(next);
+		onMentionedUsersChange?.(next);
+	};
 	const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
 	const [cursorPosition, setCursorPosition] = useState(0);
 	const inputRef = useRef<TextInput>(null);
@@ -60,12 +82,15 @@ export function MentionInput({
 	});
 
 	// Fetch Convex users to map Clerk users to Convex user IDs
-	const convexUsers = useQuery(api.users.listByOrg);
+	const convexUsers = useCachedQuery(api.users.listByOrg, {});
+	// Attachments are out of offline scope — this direct call stays for that path only.
 	const createMention = useMutation(api.notifications.createMention);
 	const syncUserFromClerk = useAction(api.users.syncUserFromClerk);
 	const generateUploadUrl = useMutation(
 		api.messageAttachments.generateUploadUrl
 	);
+	const { online } = useOffline();
+	const onlineAction = useOnlineAction();
 
 	// Build a map of organization users with both Clerk and Convex data
 	const organizationUsers =
@@ -101,6 +126,7 @@ export function MentionInput({
 	// Handle text input change
 	const handleTextChange = (text: string) => {
 		setMessage(text);
+		onMessageChange?.(text);
 
 		// Check for @ mentions
 		const textBeforeCursor = text.slice(0, cursorPosition);
@@ -148,6 +174,7 @@ export function MentionInput({
 			]);
 
 			setMessage(newMessage);
+			onMessageChange?.(newMessage);
 			setShowUserList(false);
 			setCursorPosition(lastAtIndex + userName.length + 4); // +4 for @[] and space
 
@@ -299,6 +326,13 @@ export function MentionInput({
 				let convexUserId = user.convexUserId;
 
 				if (!convexUserId) {
+					// syncUserFromClerk is a live server call — offline it would hang
+					// rather than fail, so refuse the resolution instead of awaiting it.
+					if (!online) {
+						throw new Error(
+							`Can't tag "${mentionedUser.name}" offline. Remove the mention or reconnect.`
+						);
+					}
 					// Verified against Clerk server-side; null means "not a member of
 					// this org", so the mention can't be resolved.
 					convexUserId =
@@ -314,8 +348,7 @@ export function MentionInput({
 				mentionedUserIds.push(convexUserId);
 			}
 
-			// One call = one feed post. Bell alerts + push go only to tagged users.
-			await createMention({
+			const args = {
 				mentionedUserIds:
 					mentionedUserIds.length > 0 ? mentionedUserIds : undefined,
 				message,
@@ -323,14 +356,30 @@ export function MentionInput({
 				entityId,
 				entityName,
 				attachments: attachmentData.length > 0 ? attachmentData : undefined,
-			});
+			};
+
+			// Attachments already needed a connection to upload — the send itself
+			// stays online-gated too. No attachments: queue it (Tier 3, append-only).
+			if (attachmentData.length > 0) {
+				if (!online) {
+					onlineAction("Sending this message", () => {});
+					return;
+				}
+				await createMention(args);
+			} else {
+				const ok = await saveOffline("notifications.createMention", args, {
+					display: { title: `Message: ${entityName}` },
+				});
+				if (!ok) return;
+			}
 
 			// Clear form
 			setMessage("");
+			onMessageChange?.("");
 			setMentionedUsers([]);
 			setAttachments([]);
 
-			Alert.alert("Success", "Message sent!");
+			if (attachmentData.length > 0) Alert.alert("Success", "Message sent!");
 			onMentionCreated?.();
 		} catch (error) {
 			const errorMessage =
@@ -422,7 +471,10 @@ export function MentionInput({
 					numberOfLines={3}
 				/>
 				<View style={styles.actions}>
-					<Pressable onPress={handleFileSelect} style={styles.actionButton}>
+					<Pressable
+					onPress={() => onlineAction("Attaching a file", handleFileSelect)}
+					style={styles.actionButton}
+				>
 						<Paperclip size={20} color={colors.foreground} />
 					</Pressable>
 					<Pressable

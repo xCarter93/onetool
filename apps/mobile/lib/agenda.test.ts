@@ -13,11 +13,13 @@ import {
 	scopeCalendarEvents,
 	selectNextUp,
 	selectNextUpProject,
+	taskDoneOverlay,
 	taskInScope,
-	tomorrowPeek,
+	nextDayPeek,
 	weekDaysFor,
 	workloadBar,
 	type AgendaProject,
+	type OverlayOp,
 	type AgendaTask,
 	type CalendarEvents,
 	type ScopedSchedule,
@@ -252,9 +254,9 @@ describe("countTasksByDay", () => {
 	});
 });
 
-describe("tomorrowPeek", () => {
-	it("summarises tomorrow's open work and earliest start", () => {
-		const peek = tomorrowPeek(
+describe("nextDayPeek", () => {
+	it("summarises the next day's open work and earliest start", () => {
+		const peek = nextDayPeek(
 			[
 				task({ _id: "late", date: WED + DAY, startTime: "14:00" }),
 				task({ _id: "early", date: WED + DAY, startTime: "08:30" }),
@@ -262,13 +264,24 @@ describe("tomorrowPeek", () => {
 				task({ _id: "done", date: WED + DAY, status: "completed" }),
 				task({ _id: "today", date: WED, startTime: "07:00" }),
 			],
+			[],
 			WED,
 		);
 		expect(peek).toEqual({ count: 3, firstStart: "08:30" });
 	});
 
-	it("reports an empty tomorrow without a start time", () => {
-		expect(tomorrowPeek([task({ _id: "today", date: WED })], WED)).toEqual({
+	it("counts projects on the next day, like the List and week strip do", () => {
+		const projects: AgendaProject[] = [
+			{ _id: "spans", title: "Spans", status: "planned", startDate: WED, endDate: WED + 3 * DAY },
+			{ _id: "starts", title: "Starts", status: "planned", startDate: WED + DAY },
+			{ _id: "done", title: "Done", status: "completed", startDate: WED + DAY },
+			{ _id: "later", title: "Later", status: "planned", startDate: WED + 2 * DAY },
+		];
+		expect(nextDayPeek([], projects, WED)).toEqual({ count: 2, firstStart: undefined });
+	});
+
+	it("reports an empty next day without a start time", () => {
+		expect(nextDayPeek([task({ _id: "today", date: WED })], [], WED)).toEqual({
 			count: 0,
 			firstStart: undefined,
 		});
@@ -752,5 +765,55 @@ describe("selectNextUpProject", () => {
 	it("returns null when every visit is finished or the day has none", () => {
 		expect(selectNextUpProject([proj("done", "completed")])).toBeNull();
 		expect(selectNextUpProject([])).toBeNull();
+	});
+});
+
+describe("taskDoneOverlay", () => {
+	const op = (
+		id: number,
+		taskId: string,
+		operation: string,
+		args: unknown,
+	): OverlayOp => ({ id, chainKey: `task:${taskId}`, operation, args });
+
+	it("returns undefined when nothing is queued for the task", () => {
+		expect(taskDoneOverlay([], "t1")).toBeUndefined();
+		expect(taskDoneOverlay([op(1, "other", "tasks.complete", { id: "other" })], "t1")).toBeUndefined();
+	});
+
+	it("tasks.complete overlays done", () => {
+		expect(taskDoneOverlay([op(1, "t1", "tasks.complete", { id: "t1" })], "t1")).toBe(true);
+	});
+
+	it("tasks.update with a done status overlays done", () => {
+		expect(
+			taskDoneOverlay([op(1, "t1", "tasks.update", { id: "t1", status: "completed" })], "t1"),
+		).toBe(true);
+	});
+
+	it("tasks.update with a not-done status overlays not done", () => {
+		expect(
+			taskDoneOverlay([op(1, "t1", "tasks.update", { id: "t1", status: "pending" })], "t1"),
+		).toBe(false);
+	});
+
+	it("tasks.update with no status field leaves the overlay unchanged", () => {
+		expect(
+			taskDoneOverlay(
+				[
+					op(1, "t1", "tasks.complete", { id: "t1" }),
+					op(2, "t1", "tasks.update", { id: "t1", title: "renamed" }),
+				],
+				"t1",
+			),
+		).toBe(true);
+	});
+
+	it("the last op on the chain wins, regardless of array order", () => {
+		const ops = [
+			op(2, "t1", "tasks.update", { id: "t1", status: "pending" }),
+			op(1, "t1", "tasks.complete", { id: "t1" }),
+		];
+		expect(taskDoneOverlay(ops, "t1")).toBe(false);
 	});
 });

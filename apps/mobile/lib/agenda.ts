@@ -38,6 +38,23 @@ export function weekDaysFor(anchorMs: number): number[] {
 	return Array.from({ length: 7 }, (_, i) => sunday + i * DAY_MS);
 }
 
+/**
+ * Days of calendar events fetched past the anchored week's Sunday. The List
+ * view runs `UPCOMING_DAYS` from the anchor, and the anchor can be the week's
+ * Saturday — 6 + 13 = 19, so 20 is a safe superset.
+ *
+ * The window is quantised to the WEEK, never the anchor: query args that change
+ * on every strip tap would drop `useQuery` back to `undefined` and flash the
+ * skeleton on every day you touch.
+ */
+const SCHEDULE_WINDOW_DAYS = 20;
+
+/** Today's calendar query args; the offline prefetcher reuses them so both share one cache key. */
+export function scheduleWindow(anchorMs: number): { startDate: number; endDate: number } {
+	const sunday = weekDaysFor(anchorMs)[0];
+	return { startDate: sunday, endDate: sunday + SCHEDULE_WINDOW_DAYS * DAY_MS };
+}
+
 /** Minutes since midnight for an "HH:MM" string; null when unparseable. */
 export function minutesFromHHMM(time?: string): number | null {
 	if (!time) return null;
@@ -77,6 +94,30 @@ const DONE = new Set(["completed", "cancelled"]);
 /** Single source of "this task is finished" — statuses that end a task's life. */
 export function isDoneStatus(status?: string): boolean {
 	return DONE.has(status ?? "");
+}
+
+/** Shape of a queued op this module needs — matches lib/offline/queue.ts's OutboxOp. */
+export type OverlayOp = { id: number; chainKey: string; operation: string; args: unknown };
+
+/**
+ * Optimistic "done" state for one task from its open outbox ops, or undefined
+ * when nothing is queued (server status should be used as-is). Ops apply in id
+ * order, so the last one on the chain wins — a queued complete-then-uncomplete
+ * (or vice versa) resolves to whichever happened last.
+ */
+export function taskDoneOverlay(ops: OverlayOp[], taskId: string): boolean | undefined {
+	const chainKey = `task:${taskId}`;
+	let done: boolean | undefined;
+	for (const op of [...ops].sort((a, b) => a.id - b.id)) {
+		if (op.chainKey !== chainKey) continue;
+		if (op.operation === "tasks.complete") {
+			done = true;
+		} else if (op.operation === "tasks.update") {
+			const status = (op.args as { status?: string }).status;
+			if (status !== undefined) done = isDoneStatus(status);
+		}
+	}
+	return done;
 }
 
 export type AgendaProject = {
@@ -476,16 +517,17 @@ export function isWeekend(dayMs: number): boolean {
 	return dow === 0 || dow === 6;
 }
 
-/** One-line Tomorrow peek: "3 tasks · first stop 8:30 AM" style summary parts. */
-export function tomorrowPeek(
+/** One-line peek at the day after `dayMs`: "3 jobs · first at 8:30 AM" style summary parts. */
+export function nextDayPeek(
 	tasks: AgendaTask[],
-	todayMs: number,
+	projects: readonly AgendaProject[],
+	dayMs: number,
 ): { count: number; firstStart?: string } {
-	const tomorrow = utcDayStartMs(todayMs) + DAY_MS;
+	const next = utcDayStartMs(dayMs) + DAY_MS;
 	const onDay = tasks.filter(
 		(t) =>
 			t.date !== undefined &&
-			utcDayStartMs(t.date) === tomorrow &&
+			utcDayStartMs(t.date) === next &&
 			!DONE.has(t.status ?? ""),
 	);
 	const timed = onDay
@@ -494,7 +536,7 @@ export function tomorrowPeek(
 		.sort((a, b) => a - b);
 	const first = timed[0];
 	return {
-		count: onDay.length,
+		count: onDay.length + projectsForDay(projects, next).length,
 		firstStart:
 			first === undefined
 				? undefined

@@ -5,11 +5,11 @@ import { useTokens } from "@/lib/theme";
 import { CenteredModal } from "@/components/ipad/centered-modal";
 import { useDevice } from "@/lib/use-device";
 import { AssistantHost } from "@/components/assistant/assistant-host";
-import { AssistantInkHeader } from "@/components/assistant/ink-header";
+import { AssistantInkHeader, contextLabelFromPath } from "@/components/assistant/ink-header";
 import { buildScreenContext } from "@/lib/screen-context";
 
-// Assistant sheet — the dock's assistant orb's destination (P3). The orb passes
-// the path it was pressed over as `ctx`; iPad landscape gets an in-shell right
+// Assistant sheet, opened from the frame's sparkle button with the current path
+// as `ctx`; iPad landscape gets an in-shell right
 // panel instead (ipad-shell), this pushed route covers iPhone + iPad portrait.
 export default function AssistantSheet() {
 	const t = useTokens();
@@ -17,12 +17,13 @@ export default function AssistantSheet() {
 	const { device, height } = useDevice();
 	const { ctx } = useLocalSearchParams<{ ctx?: string }>();
 	const screenContext = buildScreenContext(ctx);
+	const contextLabel = contextLabelFromPath(ctx);
 
 	if (device === "ipad") {
 		return (
 			<CenteredModal onScrimPress={() => router.back()} maxHeight="80%">
 				<View style={[styles.padCard, { backgroundColor: t.card }]}>
-					<AssistantInkHeader />
+					<AssistantInkHeader context={contextLabel} />
 					<AssistantHost
 						screenContext={screenContext}
 						// Card is centered at 80% height (maxHeight above), so its bottom
@@ -41,7 +42,7 @@ export default function AssistantSheet() {
 				{ backgroundColor: t.card, paddingBottom: insets.bottom },
 			]}
 		>
-			<AssistantInkHeader grabber />
+			<AssistantInkHeader grabber context={contextLabel} />
 			{/* The container already pads insets.bottom, so that's the gap between
 			    the chat's bottom edge and the window bottom. */}
 			<AssistantHost
