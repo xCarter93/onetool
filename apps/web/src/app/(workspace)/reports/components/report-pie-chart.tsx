@@ -4,7 +4,7 @@ import React from "react";
 import { Pie, PieChart, Cell, ResponsiveContainer, Sector } from "recharts";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
-import { formatReportValue } from "../report-config";
+import { formatReportTotal } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
@@ -25,6 +25,8 @@ interface ReportPieChartProps {
 	entityType: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	/** Drill-down (R10): opens the records behind the clicked slice. */
@@ -35,6 +37,7 @@ export function ReportPieChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 	onBucketClick,
 }: ReportPieChartProps) {
@@ -125,7 +128,7 @@ export function ReportPieChart({
 					{data.length} categories
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
+					Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent }, { compact: true })}
 				</span>
 			</div>
 

@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
-import { formatReportValue } from "../report-config";
+import { formatReportTotal, formatReportValue } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import {
 	COMPARE_COLOR,
@@ -52,6 +52,8 @@ interface ReportBarChartProps {
 	entityType: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	/** Stacked mode: one bar per segment, read from wide rows keyed by segment key. */
@@ -69,6 +71,7 @@ export function ReportBarChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 	segments,
 	compareLabel,
@@ -120,7 +123,7 @@ export function ReportBarChart({
 					{data.length} categories
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
+					Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent }, { compact: true })}
 				</span>
 			</div>
 

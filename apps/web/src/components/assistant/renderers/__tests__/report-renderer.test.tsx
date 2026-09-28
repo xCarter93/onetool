@@ -75,4 +75,24 @@ describe("ReportRenderer", () => {
 
 		expect(screen.getByText("Total: $500")).toBeInTheDocument();
 	});
+
+	it("shows a ratio report's total as a percentage without a count average", () => {
+		render(
+			<ReportRenderer
+				input={{ entityType: "quotes", groupBy: "conversionRate" }}
+				output={{
+					data: [
+						{ label: "Approved", value: 21 },
+						{ label: "Not Approved", value: 29 },
+					],
+					total: 42,
+					visualization: "table",
+					metadata: { entityType: "quotes", groupBy: "conversionRate" },
+				}}
+			/>
+		);
+
+		expect(screen.getByText("Total: 42%")).toBeInTheDocument();
+		expect(screen.queryByText(/per category/)).not.toBeInTheDocument();
+	});
 });

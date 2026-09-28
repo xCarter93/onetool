@@ -20,7 +20,7 @@ import {
 	measureLabel,
 } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
-import { formatReportValue } from "../report-config";
+import { formatReportTotal, formatReportValue } from "../report-config";
 import { bucketElementClick, type BucketClickHandler } from "./report-bucket-click";
 
 interface DataPoint {
@@ -39,6 +39,8 @@ interface ReportLineChartProps {
 	groupBy?: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — never inferred. */
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	/** Is each item's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	/** Names the comparison series ("Previous period"); absent when not comparing. */
@@ -71,6 +73,7 @@ export function ReportLineChart({
 	total,
 	groupBy,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 	compareLabel,
 	axisLabels,
@@ -134,7 +137,7 @@ export function ReportLineChart({
 				</span>
 				<div className="flex items-center gap-3">
 					<span className="font-medium text-foreground">
-						Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
+						Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent }, { compact: true })}
 					</span>
 					{trend !== 0 && (
 						<span
