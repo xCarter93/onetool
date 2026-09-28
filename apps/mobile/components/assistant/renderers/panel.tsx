@@ -2,36 +2,8 @@ import type { ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { CircleAlert } from "lucide-react-native";
 import { Eyebrow } from "@/components/ui";
+import { toolChipLabels } from "@/lib/assistant-renderers";
 import { fontFamily, radii, type, useTokens } from "@/lib/theme";
-
-// Prefixes that read naturally as a past-tense verb in a status chip; anything
-// else falls back to "Ran".
-const VERB_MAP: Record<string, string> = {
-	get: "Checked",
-	list: "Looked up",
-	search: "Searched",
-	create: "Created",
-	update: "Updated",
-	plan: "Planned",
-	optimize: "Optimized",
-	run: "Ran",
-	describe: "Looked up",
-};
-
-function splitCamelWords(name: string): string[] {
-	return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(" ").filter(Boolean);
-}
-
-/** Derives a "Checked schedule" / "Looking up clients…" style chip label from
- *  a raw tool name (e.g. "getSchedule", "listClients"). */
-function humanizeToolLabel(name: string): { active: string; done: string } {
-	const words = splitCamelWords(name);
-	const verbKey = words[0]?.toLowerCase() ?? "";
-	const verb = VERB_MAP[verbKey];
-	const rest = (verb ? words.slice(1) : words).join(" ").toLowerCase();
-	const label = rest ? `${verb ?? "Ran"} ${rest}` : (verb ?? "Ran");
-	return { done: label, active: `${label}…` };
-}
 
 /** Compact bordered chip for a one-line tool status. */
 export function ResultPanel({ children }: { children: ReactNode }) {
@@ -45,7 +17,7 @@ export function ToolChip({ name, state }: { name: string; state?: string }) {
 	const t = useTokens();
 	const failed = state === "output-error";
 	const running = state !== "output-available" && state !== "output-error";
-	const { active, done } = humanizeToolLabel(name);
+	const { active, done } = toolChipLabels(name);
 	return (
 		<ResultPanel>
 			{failed ? (

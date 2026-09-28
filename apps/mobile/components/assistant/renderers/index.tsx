@@ -1,4 +1,5 @@
 import { Component, type ComponentType, type ReactNode } from "react";
+import { isRenderableOutput } from "@/lib/assistant-renderers";
 import { SearchHelpRenderer } from "./help";
 import {
 	ClientsRenderer,
@@ -57,8 +58,11 @@ export function ToolResult({
 	output: unknown;
 }) {
 	const Renderer = TOOL_RENDERERS[name];
-	if (!Renderer || state !== "output-available" || output === undefined) {
+	if (!Renderer || state !== "output-available") {
 		return <ToolChip name={name} state={state} />;
+	}
+	if (!isRenderableOutput(name, output)) {
+		return <ToolChip name={name} state="output-error" />;
 	}
 	return (
 		<RendererErrorBoundary fallback={<ToolChip name={name} state="output-error" />}>

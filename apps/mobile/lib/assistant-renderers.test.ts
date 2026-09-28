@@ -6,7 +6,9 @@ import {
 	helpArticleUrl,
 	hiddenCount,
 	invoiceRow,
+	isRenderableOutput,
 	quoteRow,
+	toolChipLabels,
 } from "@/lib/assistant-renderers";
 
 describe("buildReportView", () => {
@@ -108,5 +110,47 @@ describe("helpArticleUrl", () => {
 		expect(helpArticleUrl("ai-assistant/meet-the-assistant")).toBe(
 			"https://onetool.biz/help/ai-assistant/meet-the-assistant",
 		);
+	});
+});
+
+describe("ratio reports", () => {
+	it("shows the rate as a percentage and drops the count average", () => {
+		const view = buildReportView({
+			data: [
+				{ label: "Approved", value: 21 },
+				{ label: "Not Approved", value: 29 },
+			],
+			total: 42,
+			metadata: { groupBy: "conversionRate" },
+		})!;
+		expect(view.totalText).toBe("42%");
+		expect(view.averageText).toBeUndefined();
+	});
+});
+
+describe("isRenderableOutput", () => {
+	it("rejects malformed or missing output for tools with a renderer", () => {
+		expect(isRenderableOutput("runReport", {})).toBe(false);
+		expect(isRenderableOutput("runReport", undefined)).toBe(false);
+		expect(isRenderableOutput("getBusinessStats", { totalClients: { current: 1 } })).toBe(false);
+		expect(isRenderableOutput("listClients", { items: [] })).toBe(true);
+		expect(isRenderableOutput("getSchedule", { tasks: [], projects: [] })).toBe(true);
+	});
+
+	it("never claims a tool without a renderer", () => {
+		expect(isRenderableOutput("getTasks", { items: [] })).toBe(false);
+	});
+});
+
+describe("toolChipLabels", () => {
+	it("uses a present-progressive verb while running", () => {
+		expect(toolChipLabels("getSchedule")).toEqual({
+			done: "Checked schedule",
+			active: "Checking schedule…",
+		});
+		expect(toolChipLabels("frobnicate")).toEqual({
+			done: "Ran frobnicate",
+			active: "Running frobnicate…",
+		});
 	});
 });

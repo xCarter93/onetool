@@ -64,9 +64,11 @@ export function ReportRenderer({ output }: { output: unknown }) {
 							<BarRow row={row} top={ranked && i === 0 && barRows.length > 1} />
 						</Divided>
 					))}
-			<Text style={[styles.meta, styles.footer, { color: t.sub, borderTopColor: t.lineSoft }]}>
-				Average {view.averageText} per category
-			</Text>
+			{view.averageText ? (
+				<Text style={[styles.meta, styles.footer, { color: t.sub, borderTopColor: t.lineSoft }]}>
+					Average {view.averageText} per category
+				</Text>
+			) : null}
 		</Panel>
 	);
 }

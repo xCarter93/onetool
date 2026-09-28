@@ -1,3 +1,4 @@
+import type { RatioKey } from "@onetool/backend/convex/lib/reportFields";
 import { formatCurrency } from "@/lib/format";
 
 // Pure shaping for the assistant's tool-result renderers
@@ -46,6 +47,57 @@ export function hiddenCount(shownSource: number, totalCount?: number): number {
 	return Math.max(totalCount ?? shownSource, shownSource) - shown;
 }
 
+// Shapes the renderers need; a malformed or missing output gets the error chip
+// instead of an empty result.
+const isObject = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null;
+const hasArray = (key: string) => (output: unknown) =>
+	isObject(output) && Array.isArray(output[key]);
+
+const OUTPUT_SHAPES: Record<string, (output: unknown) => boolean> = {
+	runReport: hasArray("data"),
+	getSchedule: (o) => hasArray("tasks")(o) || hasArray("projects")(o),
+	searchClientEmails: hasArray("items"),
+	getBusinessStats: (o) =>
+		isObject(o) && isObject(o.totalClients) && isObject(o.revenueGoal),
+	searchHelp: isObject,
+	listClients: hasArray("items"),
+	listProjects: hasArray("items"),
+	listQuotes: hasArray("items"),
+	listInvoices: hasArray("items"),
+	listSkus: hasArray("items"),
+	getTeamMembers: hasArray("items"),
+};
+
+export function isRenderableOutput(tool: string, output: unknown): boolean {
+	return OUTPUT_SHAPES[tool]?.(output) ?? false;
+}
+
+// Tool-name prefix → chip verbs; anything else falls back to Ran/Running.
+const TOOL_VERBS: Record<string, { done: string; active: string }> = {
+	get: { done: "Checked", active: "Checking" },
+	list: { done: "Looked up", active: "Looking up" },
+	search: { done: "Searched", active: "Searching" },
+	create: { done: "Created", active: "Creating" },
+	update: { done: "Updated", active: "Updating" },
+	plan: { done: "Planned", active: "Planning" },
+	optimize: { done: "Optimized", active: "Optimizing" },
+	run: { done: "Ran", active: "Running" },
+	describe: { done: "Looked up", active: "Looking up" },
+};
+
+/** "getSchedule" → { done: "Checked schedule", active: "Checking schedule…" }. */
+export function toolChipLabels(name: string): { done: string; active: string } {
+	const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(" ").filter(Boolean);
+	const verb = TOOL_VERBS[words[0]?.toLowerCase() ?? ""];
+	const rest = (verb ? words.slice(1) : words).join(" ").toLowerCase();
+	const { done, active } = verb ?? { done: "Ran", active: "Running" };
+	return {
+		done: rest ? `${done} ${rest}` : done,
+		active: `${rest ? `${active} ${rest}` : active}…`,
+	};
+}
+
 export function helpArticleUrl(ref: string): string {
 	return `https://onetool.biz/help/${ref}`;
 }
@@ -68,6 +120,7 @@ export interface ReportOutput {
 	total: number;
 	visualization?: ReportVisualization;
 	metadata?: {
+		groupBy?: string;
 		truncated?: boolean;
 		totalIsCurrency?: boolean;
 		itemValueIsCurrency?: boolean;
@@ -91,9 +144,17 @@ export interface ReportView {
 	/** Backend order — the line chart (time buckets arrive in order). */
 	ordered: ReportRow[];
 	totalText: string;
-	averageText: string;
+	/** Absent for ratio reports — averaging their rows' counts reads as the rate. */
+	averageText?: string;
 	truncated: boolean;
 }
+
+// Typed as a Record so a new backend ratio key fails typecheck here; importing
+// RATIO_KEYS would pull the whole report registry into the app bundle.
+const RATIO_KEYS: Record<RatioKey, true> = {
+	conversionRate: true,
+	completionRate: true,
+};
 
 function formatReportValue(value: number, isCurrency: boolean): string {
 	return isCurrency ? formatCurrency(value) : value.toLocaleString("en-US");
@@ -103,6 +164,8 @@ export function buildReportView(output: unknown): ReportView | null {
 	const report = output as ReportOutput | undefined;
 	if (!Array.isArray(report?.data)) return null;
 
+	// Ratio reports carry the ratioKey as groupBy and an integer percentage as total.
+	const isRatio = Object.hasOwn(RATIO_KEYS, report.metadata?.groupBy ?? "");
 	// Flags are emitted only when true — absent means counts.
 	const totalIsCurrency = report.metadata?.totalIsCurrency === true;
 	const itemIsCurrency = report.metadata?.itemValueIsCurrency === true;
@@ -125,10 +188,14 @@ export function buildReportView(output: unknown): ReportView | null {
 		visualization: report.visualization ?? "bar",
 		ranked: [...ordered].sort((a, b) => b.value - a.value),
 		ordered,
-		totalText: formatReportValue(report.total, totalIsCurrency),
-		averageText: itemIsCurrency
-			? formatCurrency(average)
-			: average.toFixed(1),
+		totalText: isRatio
+			? `${report.total}%`
+			: formatReportValue(report.total, totalIsCurrency),
+		averageText: isRatio
+			? undefined
+			: itemIsCurrency
+				? formatCurrency(average)
+				: average.toFixed(1),
 		truncated: report.metadata?.truncated === true,
 	};
 }
