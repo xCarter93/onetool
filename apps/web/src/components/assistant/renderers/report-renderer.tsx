@@ -1,6 +1,7 @@
 "use client";
 
 import { TriangleAlert } from "lucide-react";
+import { RATIO_KEYS } from "@onetool/backend/convex/lib/reportFields";
 import { ReportBarChart } from "@/app/(workspace)/reports/components/report-bar-chart";
 import { ReportColumnChart } from "@/app/(workspace)/reports/components/report-column-chart";
 import { ReportLineChart } from "@/app/(workspace)/reports/components/report-line-chart";
@@ -56,6 +57,8 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 	// Flags are emitted only when true (unified pipeline) — absent means counts.
 	const totalIsCurrency = report.metadata?.totalIsCurrency === true;
 	const itemValueIsCurrency = report.metadata?.itemValueIsCurrency === true;
+	// Ratio results report their ratioKey as groupBy and a percentage as total.
+	const totalIsPercent = (RATIO_KEYS as readonly string[]).includes(groupBy ?? "");
 
 	const chartProps = {
 		data: chartData,
@@ -63,6 +66,7 @@ export function ReportRenderer({ input, output }: ToolRendererProps) {
 		groupBy,
 		entityType,
 		totalIsCurrency,
+		totalIsPercent,
 		itemValueIsCurrency,
 	};
 

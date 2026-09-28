@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
-import { formatReportValue } from "../report-config";
+import { formatReportTotal } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, measureLabel } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
@@ -27,6 +27,8 @@ interface ReportRadarChartProps {
 	groupBy?: string;
 	entityType: string;
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	itemValueIsCurrency?: boolean;
 }
 
@@ -39,6 +41,7 @@ export function ReportRadarChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 }: ReportRadarChartProps) {
 	const patternPrefix = React.useId();
@@ -70,7 +73,7 @@ export function ReportRadarChart({
 			<div className="flex items-center justify-between text-sm">
 				<span className="text-muted-foreground">{data.length} categories</span>
 				<span className="font-medium text-foreground">
-					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
+					Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent }, { compact: true })}
 				</span>
 			</div>
 

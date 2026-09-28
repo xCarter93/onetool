@@ -252,6 +252,7 @@ function ReportUtilityBarInner({
 								groupBy={config.groupBy}
 								entityType={config.entityType}
 								totalIsCurrency={totalIsCurrency}
+								totalIsPercent={isRatio}
 								itemValueIsCurrency={
 									reportData!.metadata?.itemValueIsCurrency === true
 								}

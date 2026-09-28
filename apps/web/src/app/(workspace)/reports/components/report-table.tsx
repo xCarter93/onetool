@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/money";
-import { formatDate, formatReportValue, percentChange } from "../report-config";
+import { formatDate, formatReportTotal, formatReportValue, percentChange } from "../report-config";
 
 interface DataPoint {
 	name: string;
@@ -40,6 +40,8 @@ interface ReportTableProps {
 	entityType: string;
 	/** Is `total` a dollar amount? Explicit, from the caller — see getReportValueTypes. */
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	/** Is each row's `value` a dollar amount (vs. a count)? */
 	itemValueIsCurrency?: boolean;
 	/** Names the aggregated value column; callers that always count can omit it. */
@@ -102,6 +104,7 @@ export function ReportTable({
 	total,
 	groupBy,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 	valueHeader = "Count",
 	compareLabel,
@@ -138,7 +141,7 @@ export function ReportTable({
 					{data.length} rows
 				</span>
 				<span className="font-medium text-foreground">
-					Total: {formatReportValue(total, totalIsCurrency)}
+					Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent })}
 				</span>
 			</div>
 
@@ -256,13 +259,16 @@ export function ReportTable({
 			{/* Footer summary */}
 			<div className="flex items-center justify-between pt-2 text-sm text-muted-foreground border-t">
 				<span>Showing all {data.length} items</span>
-				<span>
-					Average:{" "}
-					{itemValueIsCurrency
-						? formatReportValue(averageValue, true)
-						: averageValue.toFixed(1)}{" "}
-					per category
-				</span>
+				{/* Averaging a ratio's row counts reads as the rate itself. */}
+				{!totalIsPercent && (
+					<span>
+						Average:{" "}
+						{itemValueIsCurrency
+							? formatReportValue(averageValue, true)
+							: averageValue.toFixed(1)}{" "}
+						per category
+					</span>
+				)}
 			</div>
 		</div>
 	);

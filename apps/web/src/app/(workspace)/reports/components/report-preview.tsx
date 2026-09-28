@@ -121,6 +121,7 @@ function ReportPreviewInner({
 	const compareLabel = comparison
 		? comparisonKindLabel(comparison.kind)
 		: undefined;
+	const isRatio = config.metric.op === "ratio";
 
 	if (reportData.detail) {
 		if (reportData.detail.rows.length === 0) {
@@ -153,7 +154,6 @@ function ReportPreviewInner({
 	// "Total" data point is the whole result.
 	if (visualization.type === "number") {
 		const totalIsCurrency = reportData.metadata?.totalIsCurrency === true;
-		const isRatio = config.metric.op === "ratio";
 		const display = isRatio
 			? `${reportData.total}%`
 			: formatReportValue(reportData.total, totalIsCurrency);
@@ -255,6 +255,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						segments={segments}
 						compareLabel={compareLabel}
@@ -271,6 +272,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						segments={segments}
 						compareLabel={compareLabel}
@@ -286,6 +288,7 @@ function ReportPreviewInner({
 						total={total}
 						groupBy={groupBy}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						compareLabel={compareLabel}
 						axisLabels={axisLabels}
@@ -301,6 +304,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						onBucketClick={onBucketClick}
 					/>
@@ -315,6 +319,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 					/>
 				);
@@ -326,6 +331,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						onBucketClick={onBucketClick}
 					/>
@@ -339,6 +345,7 @@ function ReportPreviewInner({
 						groupBy={groupBy}
 						entityType={config.entityType}
 						totalIsCurrency={totalIsCurrency}
+						totalIsPercent={isRatio}
 						itemValueIsCurrency={itemValueIsCurrency}
 						valueHeader={metricLabelFor(config)}
 						compareLabel={compareLabel}

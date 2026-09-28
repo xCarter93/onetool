@@ -4,7 +4,7 @@ import React from "react";
 import { RadialBar, RadialBarChart, Cell, PolarGrid } from "recharts";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { CHART_CATEGORICAL, getChartColor } from "@/lib/chart-colors";
-import { formatReportValue } from "../report-config";
+import { formatReportTotal } from "../report-config";
 import { ChartNoData, isChartDataEmpty } from "./chart-no-data";
 import { ReportChartTooltip, reportChartConfig } from "./report-chart-tooltip";
 import { ChartStripeDefs, stripeId } from "@/components/charts/chart-stripe-defs";
@@ -24,6 +24,8 @@ interface ReportRadialChartProps {
 	groupBy?: string;
 	entityType: string;
 	totalIsCurrency?: boolean;
+	/** Is `total` a ratio percentage? */
+	totalIsPercent?: boolean;
 	itemValueIsCurrency?: boolean;
 	/** Drill-down (R10): opens the records behind the clicked arc. */
 	onBucketClick?: BucketClickHandler;
@@ -34,6 +36,7 @@ export function ReportRadialChart({
 	data,
 	total,
 	totalIsCurrency = false,
+	totalIsPercent = false,
 	itemValueIsCurrency = false,
 	onBucketClick,
 }: ReportRadialChartProps) {
@@ -59,7 +62,7 @@ export function ReportRadialChart({
 			<div className="flex items-center justify-between text-sm">
 				<span className="text-muted-foreground">{data.length} categories</span>
 				<span className="font-medium text-foreground">
-					Total: {formatReportValue(total, totalIsCurrency, { compact: true })}
+					Total: {formatReportTotal(total, { isCurrency: totalIsCurrency, isPercent: totalIsPercent }, { compact: true })}
 				</span>
 			</div>
 

@@ -552,6 +552,15 @@ export function formatRelativeTime(timestamp: number) {
 	return formatDate(timestamp);
 }
 
+/** A report's headline total; ratio reports carry an integer percentage. */
+export function formatReportTotal(
+	total: number,
+	{ isCurrency, isPercent }: { isCurrency: boolean; isPercent: boolean },
+	options: { compact?: boolean } = {}
+): string {
+	return isPercent ? `${total}%` : formatReportValue(total, isCurrency, options);
+}
+
 /**
  * Formats a report metric as USD or a plain count. `isCurrency` must come
  * from the result's explicit metadata flags (the unified pipeline emits them
