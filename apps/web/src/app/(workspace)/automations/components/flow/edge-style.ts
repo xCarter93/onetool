@@ -39,7 +39,8 @@ export function edgeStroke({
 				? "var(--flow-edge-loop)"
 				: "var(--flow-edge)";
 	return {
-		stroke,
+		// flow-theme.css sets --flow-edge-run on edges into a failed test-run step.
+		stroke: `var(--flow-edge-run, ${stroke})`,
 		strokeWidth: hovered || selected ? 2.5 : 2,
 		strokeDasharray: dashed ? "5 4" : undefined,
 		transition: "stroke 120ms ease, stroke-width 120ms ease",

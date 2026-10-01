@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
 	computeLiveTraversalStatuses,
+	computeNodeResults,
 	computeNodeStatuses,
-	runEdgeFlowClass,
+	nodeResultFacts,
+	runEdgeClass,
+	RUN_STATUS_META,
 	runStatusRingClass,
 } from "./run-status";
 
@@ -21,6 +24,15 @@ describe("computeNodeStatuses", () => {
 			],
 		});
 		expect(statuses).toEqual({ a: "success", b: "skipped" });
+	});
+
+	it("marks a loop failed when any of its items failed", () => {
+		const statuses = computeNodeStatuses({
+			status: "completed_with_errors",
+			nodesExecuted: [{ nodeId: "L", result: "success" }],
+			loopSummary: [{ nodeId: "L", total: 3, succeeded: 2, failed: 1, skipped: 0 }],
+		});
+		expect(statuses.L).toBe("failed");
 	});
 
 	it("marks the current node running while the run is in progress", () => {
@@ -76,8 +88,18 @@ describe("runStatusRingClass", () => {
 		expect(runStatusRingClass(undefined)).toBe("");
 	});
 
-	it("gates the running pulse behind motion-safe", () => {
-		expect(runStatusRingClass("running")).toContain("motion-safe:animate-pulse");
+	it("holds a steady halo on running instead of pulsing the card", () => {
+		expect(runStatusRingClass("running")).not.toContain("animate-pulse");
+		expect(runStatusRingClass("running")).toContain("shadow-");
+	});
+});
+
+describe("RUN_STATUS_META", () => {
+	it("labels every non-idle status for screen readers", () => {
+		expect(RUN_STATUS_META.running.label).toBe("Running");
+		expect(RUN_STATUS_META.success.label).toBe("Succeeded");
+		expect(RUN_STATUS_META.failed.label).toBe("Failed");
+		expect(RUN_STATUS_META.skipped.label).toBe("Skipped");
 	});
 });
 
@@ -135,22 +157,95 @@ describe("computeLiveTraversalStatuses", () => {
 	});
 });
 
-describe("runEdgeFlowClass", () => {
-	it("flows when the source succeeded and the target was reached", () => {
-		expect(runEdgeFlowClass("success", "success")).toBe("flow-edge-running");
+describe("runEdgeClass", () => {
+	it("marches only the edge into the running step", () => {
+		expect(runEdgeClass("success", "running")).toBe("flow-edge-running");
+		expect(runEdgeClass("running", "running")).toBe("flow-edge-running");
 	});
 
-	it("flows when the source and target are both running", () => {
-		expect(runEdgeFlowClass("running", "running")).toBe("flow-edge-running");
+	it("leaves completed edges solid", () => {
+		expect(runEdgeClass("success", "success")).toBe("");
+	});
+
+	it("marks the edge into a failed step", () => {
+		expect(runEdgeClass("success", "failed")).toBe("flow-edge-failed");
+	});
+
+	it("marks edges into skipped steps, including inside a skipped branch", () => {
+		expect(runEdgeClass("success", "skipped")).toBe("flow-edge-skipped");
+		expect(runEdgeClass("skipped", "skipped")).toBe("flow-edge-skipped");
 	});
 
 	it("returns empty when the target hasn't been reached", () => {
-		expect(runEdgeFlowClass("success", undefined)).toBe("");
-		expect(runEdgeFlowClass("success", "idle")).toBe("");
+		expect(runEdgeClass("success", undefined)).toBe("");
+		expect(runEdgeClass("success", "idle")).toBe("");
 	});
 
-	it("returns empty when the source was skipped or failed", () => {
-		expect(runEdgeFlowClass("skipped", "success")).toBe("");
-		expect(runEdgeFlowClass("failed", "success")).toBe("");
+	it("returns empty when the source never ran", () => {
+		expect(runEdgeClass(undefined, "running")).toBe("");
+		expect(runEdgeClass(undefined, "failed")).toBe("");
+		expect(runEdgeClass(undefined, "skipped")).toBe("");
+		expect(runEdgeClass("skipped", "running")).toBe("");
+	});
+});
+
+describe("computeNodeResults", () => {
+	it("returns an empty map for no execution", () => {
+		expect(computeNodeResults(null)).toEqual({});
+	});
+
+	it("reports duration, records, and errors for top-level steps", () => {
+		const results = computeNodeResults({
+			status: "failed",
+			nodesExecuted: [
+				{ nodeId: "a", result: "success", startedAt: 1000, completedAt: 2200, recordsProcessed: 12 },
+				{ nodeId: "b", result: "failed", error: "Record not found" },
+			],
+		});
+		expect(results.a).toEqual({ status: "success", durationMs: 1200, recordsProcessed: 12 });
+		expect(results.b).toEqual({ status: "failed", error: "Record not found" });
+	});
+
+	it("keeps a loop body step's first failure and drops per-iteration numbers", () => {
+		const results = computeNodeResults({
+			status: "completed_with_errors",
+			nodesExecuted: [
+				{ nodeId: "body", result: "success", loopNodeId: "L", loopIndex: 0, startedAt: 0, completedAt: 5 },
+				{ nodeId: "body", result: "failed", error: "first", loopNodeId: "L", loopIndex: 1 },
+				{ nodeId: "body", result: "failed", error: "second", loopNodeId: "L", loopIndex: 2 },
+			],
+		});
+		expect(results.body).toEqual({ status: "failed", error: "first" });
+	});
+
+	it("uses the loop summary tally for loop nodes", () => {
+		const results = computeNodeResults({
+			status: "completed_with_errors",
+			nodesExecuted: [{ nodeId: "L", result: "success" }],
+			loopSummary: [{ nodeId: "L", total: 14, succeeded: 12, failed: 2, skipped: 0 }],
+		});
+		expect(results.L.loop).toEqual({ total: 14, succeeded: 12, failed: 2, skipped: 0 });
+		expect(nodeResultFacts(results.L)).toEqual(["12 of 14 items", "2 failed"]);
+	});
+
+	it("keeps results for node ids the canvas no longer has", () => {
+		const results = computeNodeResults({
+			status: "completed",
+			nodesExecuted: [{ nodeId: "gone", result: "success" }],
+		});
+		expect(results.gone.status).toBe("success");
+	});
+});
+
+describe("nodeResultFacts", () => {
+	it("formats duration and record count", () => {
+		expect(nodeResultFacts({ status: "success", durationMs: 1200, recordsProcessed: 1 })).toEqual([
+			"1.2s",
+			"1 record",
+		]);
+	});
+
+	it("is empty when nothing was measured", () => {
+		expect(nodeResultFacts({ status: "success" })).toEqual([]);
 	});
 });

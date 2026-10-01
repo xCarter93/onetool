@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { RunRecordRef } from "../../hooks/use-automation-editor";
-import { DebugTimeline } from "./debug-timeline";
+import { DebugTimeline, type DebugFocus } from "./debug-timeline";
 import { summarizeLoopFailures, type RunStatus } from "../../lib/run-format";
 import type { TriggerableObjectType } from "../../lib/node-types";
 
@@ -52,6 +52,7 @@ interface DebugPanelProps {
 	onCancel: () => void;
 	rfNodes: Node[];
 	onNavigateToNode: (nodeId: string) => void;
+	focus?: DebugFocus | null;
 }
 
 const OBJECT_LABEL: Record<string, string> = {
@@ -63,18 +64,47 @@ const OBJECT_LABEL: Record<string, string> = {
 };
 
 /** Overall run status line — a failure is never conveyed by color alone. */
-function StatusLine({ execution }: { execution: ExecutionDoc }) {
+function StatusLine({
+	execution,
+	rfNodes,
+	onNavigateToNode,
+}: {
+	execution: ExecutionDoc;
+	rfNodes: Node[];
+	onNavigateToNode: (nodeId: string) => void;
+}) {
 	if (!execution) return null;
 	const count = execution.nodesExecuted.length;
 	const failedIndex = execution.nodesExecuted.findIndex(
 		(entry) => entry.result === "failed"
 	);
-	const failedText =
-		failedIndex >= 0
-			? `Failed at step ${failedIndex + 1}${execution.error ? `: ${execution.error}` : ""}`
-			: execution.error
-				? `Failed: ${execution.error}`
-				: "Test failed";
+	const failedNodeId = failedIndex >= 0 ? execution.nodesExecuted[failedIndex].nodeId : null;
+	// A past run's failed step may have been removed since.
+	const canJump = failedNodeId !== null && rfNodes.some((n) => n.id === failedNodeId);
+	const failedText: ReactNode =
+		failedNodeId !== null ? (
+			<>
+				{canJump ? (
+					<Button
+						variant="link"
+						size="sm"
+						className="h-auto p-0 text-xs text-inherit underline"
+						onClick={() => onNavigateToNode(failedNodeId)}
+					>
+						Failed at step {failedIndex + 1}
+					</Button>
+				) : (
+					`Failed at step ${failedIndex + 1}`
+				)}
+				{execution.error ? `: ${execution.error}` : ""}
+			</>
+		) : execution.error ? (
+			`Failed: ${execution.error}`
+		) : execution.dryRun ? (
+			"Test failed"
+		) : (
+			"Failed"
+		);
 
 	const { total: loopTotal, failed: loopFailed } = summarizeLoopFailures(
 		execution.loopSummary
@@ -94,7 +124,7 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 
 	// Typed against RunStatus so a future added status fails to compile here
 	// instead of silently falling through the `if (!s) return null` guard.
-	const map: Record<RunStatus, { icon: ReactNode; text: string; cls: string }> = {
+	const map: Record<RunStatus, { icon: ReactNode; text: ReactNode; cls: string }> = {
 		running: {
 			icon: (
 				<Loader2 className="size-4 animate-spin text-primary" />
@@ -106,7 +136,7 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 			icon: (
 				<CheckCircle2 className="size-4 text-success-foreground" />
 			),
-			text: "Test completed",
+			text: isDry ? "Test completed" : "Completed",
 			cls: "text-success-foreground",
 		},
 		completed_with_errors: {
@@ -128,7 +158,7 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 		},
 		cancelled: {
 			icon: <CircleSlash className="size-4 text-muted-foreground" />,
-			text: "Test cancelled",
+			text: isDry ? "Test cancelled" : "Cancelled",
 			cls: "text-muted-foreground",
 		},
 	};
@@ -243,6 +273,7 @@ export function DebugPanel({
 	onCancel,
 	rfNodes,
 	onNavigateToNode,
+	focus,
 }: DebugPanelProps) {
 	const [recordId, setRecordId] = useState<string | undefined>(undefined);
 
@@ -333,12 +364,14 @@ export function DebugPanel({
 						) : (
 							<Play className="size-4" />
 						)}
-						{hasActiveRun ? "Run again" : "Run test"}
+						{hasActiveRun && execution?.dryRun ? "Run again" : "Run test"}
 					</Button>
 				)}
 			</div>
 
-			{hasActiveRun && <StatusLine execution={execution} />}
+			{hasActiveRun && (
+				<StatusLine execution={execution} rfNodes={rfNodes} onNavigateToNode={onNavigateToNode} />
+			)}
 
 			{hasActiveRun && execution && execution.status !== "running" && (
 				<PartialProgressBanner execution={execution} />
@@ -379,6 +412,7 @@ export function DebugPanel({
 						entries={entries}
 						rfNodes={rfNodes}
 						onNavigateToNode={onNavigateToNode}
+						focus={focus}
 					/>
 				</div>
 			) : (

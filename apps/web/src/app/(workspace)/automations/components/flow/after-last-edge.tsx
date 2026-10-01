@@ -4,7 +4,7 @@ import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { getAfterLastGeometry } from "./edge-geometry";
 import { NextItemMarker } from "./next-item-marker";
 import { edgeStroke } from "./edge-style";
-import { EdgeInsertButton } from "./edge-insert-button";
+import { EdgeInsertButton, useAddAfterLabel } from "./edge-insert-button";
 import { EdgeLabelPill } from "./edge-label-pill";
 import { useEdgeHovered } from "./edge-hover-context";
 
@@ -22,6 +22,7 @@ import { useEdgeHovered } from "./edge-hover-context";
  */
 export function AfterLastEdge({
 	id,
+	source,
 	sourceX,
 	sourceY,
 	targetX,
@@ -34,6 +35,7 @@ export function AfterLastEdge({
 }: EdgeProps) {
 	const isTerminal = data?.isTerminal === true;
 	const hovered = useEdgeHovered(id);
+	const insertLabel = useAddAfterLabel(source);
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -65,6 +67,7 @@ export function AfterLastEdge({
 					onInsert={onInsertNode}
 					variant={isTerminal ? "stub" : "inline"}
 					edgeHovered={hovered}
+					label={insertLabel}
 				/>
 				{isTerminal && data?.impliedNextItem === true && (
 					<NextItemMarker x={geometry.plusX} y={targetY + 20} />

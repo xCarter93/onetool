@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@onetool/backend/convex/_generated/api";
-import type { Id } from "@onetool/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { convexErrorMessage } from "@/lib/convex-error";
 import type { LifecycleStatus } from "../lib/automation-display";
@@ -43,8 +43,13 @@ import {
 	getValidationWarningMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
+import { isDuplicableStep } from "../lib/duplicable";
 import { definitionSignature } from "../lib/editor-signature";
-import { computeLiveTraversalStatuses, computeNodeStatuses } from "../lib/run-status";
+import {
+	computeLiveTraversalStatuses,
+	computeNodeResults,
+	computeNodeStatuses,
+} from "../lib/run-status";
 import { getScopeObjectType } from "../lib/variables";
 
 /** A record the test/manual runner can target. */
@@ -348,7 +353,8 @@ export function toSavableNodes(nodes: WorkflowNode[]) {
 	});
 }
 
-export function useAutomationEditor(automationId: string | null) {
+/** `runId` is a past execution to paint on the canvas (the editor's `run` param). */
+export function useAutomationEditor(automationId: string | null, runId: string | null = null) {
 	const router = useRouter();
 	const toast = useToast();
 
@@ -388,7 +394,13 @@ export function useAutomationEditor(automationId: string | null) {
 	const [isPublishing, setIsPublishing] = useState(false);
 	const [isStartingTest, setIsStartingTest] = useState(false);
 	const [activeExecutionId, setActiveExecutionId] =
-		useState<Id<"workflowExecutions"> | null>(null);
+		useState<Id<"workflowExecutions"> | null>(runId as Id<"workflowExecutions"> | null);
+	const [prevRunId, setPrevRunId] = useState(runId);
+	if (runId !== prevRunId) {
+		setPrevRunId(runId);
+		if (runId) setActiveExecutionId(runId as Id<"workflowExecutions">);
+		else if (activeExecutionId === prevRunId) setActiveExecutionId(null);
+	}
 	const [hasInitialized, setHasInitialized] = useState(false);
 	const [undoBanner, setUndoBanner] = useState<UndoBannerState | null>(null);
 	const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -448,15 +460,19 @@ export function useAutomationEditor(automationId: string | null) {
 		};
 	}, []);
 
-	const clearUndoState = useCallback(() => {
+	const dismissUndoBanner = useCallback(() => {
 		setUndoBanner(null);
-		// Editing invalidates any run currently painted on the canvas.
-		setActiveExecutionId(null);
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 			undoTimeoutRef.current = null;
 		}
 	}, []);
+
+	const clearUndoState = useCallback(() => {
+		dismissUndoBanner();
+		// Editing invalidates any run currently painted on the canvas.
+		setActiveExecutionId(null);
+	}, [dismissUndoBanner]);
 
 	// Keep the snapshot mirror current after every render (incl. load-init
 	// above). pushHistory only runs from event handlers, which fire post-commit.
@@ -756,14 +772,14 @@ export function useAutomationEditor(automationId: string | null) {
 	}, []);
 
 	const handleDeleteNode = useCallback(
-		(nodeId: string) => {
+		(nodeId: string): boolean => {
 			const nodeToDelete = nodes.find((node) => node.id === nodeId);
-			if (!nodeToDelete) return;
+			if (!nodeToDelete) return false;
 
 			const { parentId, branch } = findParent(nodeId, nodes);
 			if (parentId === null) {
 				setShowClearConfirm(true);
-				return;
+				return false;
 			}
 
 			// Deleting changes the graph; drop any stale run overlay. Note: NOT
@@ -797,7 +813,7 @@ export function useAutomationEditor(automationId: string | null) {
 					message: "This step and its branches have been removed.",
 				});
 				showUndoToast();
-				return;
+				return true;
 			}
 
 			if (nodeToDelete.type === "loop") {
@@ -820,7 +836,7 @@ export function useAutomationEditor(automationId: string | null) {
 					message: "This loop and its body steps have been removed.",
 				});
 				showUndoToast();
-				return;
+				return true;
 			}
 
 			const childNodeId = nodeToDelete.nextNodeId;
@@ -847,6 +863,7 @@ export function useAutomationEditor(automationId: string | null) {
 				message: "This step has been removed.",
 			});
 			showUndoToast();
+			return true;
 		},
 		[nodes, pushHistory, showUndoToast]
 	);
@@ -859,14 +876,7 @@ export function useAutomationEditor(automationId: string | null) {
 	const handleDuplicateNode = useCallback(
 		(nodeId: string): string | null => {
 			const source = nodes.find((node) => node.id === nodeId);
-			if (
-				!source ||
-				source.type === "placeholder" ||
-				source.type === "condition" ||
-				source.type === "loop" ||
-				source.type === "end" ||
-				source.type === "next_item"
-			) {
+			if (!source || !isDuplicableStep(source.type)) {
 				return null;
 			}
 			setActiveExecutionId(null);
@@ -908,13 +918,15 @@ export function useAutomationEditor(automationId: string | null) {
 		clearUndoState();
 	}, [clearUndoState, pushHistory]);
 
+	const handleRequestClear = useCallback(() => {
+		setShowClearConfirm(true);
+	}, []);
+
 	const handleCancelClear = useCallback(() => {
 		setShowClearConfirm(false);
 	}, []);
 
-	const handlePaneClick = useCallback(() => {
-		clearUndoState();
-	}, [clearUndoState]);
+	const handlePaneClick = dismissUndoBanner;
 
 	// Positions are fully derived inside automationToReactFlow (derived-layout.ts)
 	const layoutedNodes = rawFlow.nodes;
@@ -938,6 +950,14 @@ export function useAutomationEditor(automationId: string | null) {
 	const hasSteps = serialized.nodes.length > 0;
 	const isDirty =
 		savedSignature !== null && savedSignature !== workingSignature;
+	// Name and description sit outside the definition signature (they don't
+	// affect publish state), so Save compares them to the loaded row.
+	const isMetaDirty =
+		!!existingAutomation &&
+		(name.trim() !== existingAutomation.name.trim() ||
+			description.trim() !== (existingAutomation.description ?? "").trim());
+	const isNew = !effectiveId;
+	const hasUnsavedChanges = isNew ? trigger !== null : isDirty || isMetaDirty;
 	const publishedSignature = existingAutomation?.publishedSnapshot
 		? definitionSignature(
 				legacyTriggerToDraft(
@@ -957,10 +977,29 @@ export function useAutomationEditor(automationId: string | null) {
 	const publishLabel = isPublished ? "Publish changes" : "Publish workflow";
 
 	// Live test/manual run subscription drives the per-node canvas chips.
-	const execution = useQuery(
-		api.automationExecutor.getExecution,
-		activeExecutionId ? { executionId: activeExecutionId } : "skip"
-	);
+	// useQueries, not useQuery: a malformed or unreadable `run` param must
+	// resolve to "not found" instead of throwing during render.
+	const executionRequest = useMemo(() => {
+		const request: RequestForQueries = {};
+		if (activeExecutionId) {
+			request.execution = {
+				query: api.automationExecutor.getExecution,
+				args: { executionId: activeExecutionId },
+			};
+		}
+		return request;
+	}, [activeExecutionId]);
+	const executionResult = useQueries(executionRequest).execution as
+		| Doc<"workflowExecutions">
+		| null
+		| undefined
+		| Error;
+	const execution =
+		executionResult instanceof Error ||
+		(executionResult && executionResult.automationId !== effectiveId)
+			? null
+			: executionResult;
+	const nodeResults = useMemo(() => computeNodeResults(execution), [execution]);
 	const runStatuses = useMemo(
 		() => computeNodeStatuses(execution),
 		[execution]
@@ -971,6 +1010,30 @@ export function useAutomationEditor(automationId: string | null) {
 		[execution]
 	);
 	const isRunning = execution?.status === "running";
+
+	const viewingPastRun = runId !== null && activeExecutionId === runId;
+	const pastRunMissing = viewingPastRun && execution === null;
+	// The canvas shows the working copy. Production runs executed a published
+	// snapshot; test runs (no snapshotVersion) executed the copy saved just before.
+	const runOutdated =
+		!!execution &&
+		!!existingAutomation &&
+		(execution.snapshotVersion !== undefined
+			? execution.snapshotVersion !== existingAutomation.publishedSnapshot?.version ||
+				publishedSignature !== workingSignature
+			: existingAutomation.updatedAt > execution.triggeredAt || isDirty);
+
+	// Drop the `run` param once that run leaves the canvas (dismissed, edited
+	// away, replaced by a new test run, or not found).
+	useEffect(() => {
+		if (!runId || (activeExecutionId === runId && !pastRunMissing)) return;
+		if (pastRunMissing) {
+			toast.error("Run not available", "That run couldn't be found for this automation.");
+		}
+		router.replace(effectiveId ? `/automations/editor?id=${effectiveId}` : "/automations/editor");
+	}, [runId, activeExecutionId, pastRunMissing, effectiveId, router, toast]);
+
+	const clearRun = useCallback(() => setActiveExecutionId(null), []);
 	const sampleScopeObjectType = triggerScopeObjectType(trigger);
 	const sampleRecords = useQuery(
 		api.automationExecutor.getSampleRecords,
@@ -1146,6 +1209,9 @@ export function useAutomationEditor(automationId: string | null) {
 		status,
 		isPublished,
 		isDirty,
+		hasUnsavedChanges,
+		// A never-saved automation stays saveable; Save is how it gets created.
+		canSave: isNew || hasUnsavedChanges,
 		needsPublish,
 		publishLabel,
 		isPublishing,
@@ -1155,9 +1221,13 @@ export function useAutomationEditor(automationId: string | null) {
 		execution,
 		runStatuses,
 		liveTraversalStatuses,
+		nodeResults,
 		isRunning,
 		isStartingTest,
-		hasActiveRun: activeExecutionId !== null,
+		hasActiveRun: activeExecutionId !== null && execution !== null,
+		viewingPastRun: viewingPastRun && !!execution,
+		runOutdated,
+		clearRun,
 		handleStartTest,
 		handleCancelTest,
 		layoutedNodes,
@@ -1176,6 +1246,7 @@ export function useAutomationEditor(automationId: string | null) {
 		handlePaneClick,
 		handleConfirmClear,
 		handleCancelClear,
+		handleRequestClear,
 		showClearConfirm,
 		// State mirror of the ref-held stacks (see historyDepth above).
 		canUndo: historyDepth.past > 0,

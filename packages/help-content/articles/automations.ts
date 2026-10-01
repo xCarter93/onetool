@@ -139,10 +139,10 @@ export const automationsArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Click the plus on the connection where the new step should go.",
-							"Pick a step from the picker. Steps are grouped by what they do: logic, records, communication, utilities, and flow.",
-							"Configure the step in the panel that opens. Each step type has its own options, like which record to update or what an email should say.",
-							"Each step card summarizes its settings in a sentence. A dashed **empty** chip marks a value you still need to fill in, and a warning line on the card names anything that would block saving.",
-							"Use the **⋯** menu on a step card, or right-click the card, to **Duplicate** or **Delete** the step. Conditions and loops can be deleted but not duplicated.",
+							"Pick a step from the picker. Steps are grouped by what they do: logic, records, communication, utilities, and flow. Type in the search box and press Enter to add the first match, or use the arrow keys to move through the list.",
+							"Configure the step in the panel that opens. Each step type has its own options, like which record to update or what an email should say. On a phone or narrow window, the panel slides up from the bottom of the screen.",
+							"Each step card summarizes its settings in a sentence. A dashed **empty** chip marks a value you still need to fill in, and a warning line on the card names anything that would block saving. The same warning shows at the top of the step's panel.",
+							"To **Duplicate** or **Delete** a step, use the buttons at the bottom of its panel, the **⋯** menu on the step card, or right-click the card. Conditions and loops can be deleted but not duplicated.",
 							"Repeat until the flow does everything you want. See [Triggers and actions](/help/automations/triggers-and-actions) for the full catalog.",
 						],
 					},
@@ -159,11 +159,36 @@ export const automationsArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Move around the canvas",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Scroll or drag to move around the canvas. To zoom, pinch on a trackpad, or hold **⌘** on a Mac or **Ctrl** on Windows while you scroll.",
+					},
+					{
+						type: "list",
+						items: [
+							"The **-** and **+** buttons in the top bar zoom out and in. Click the percentage between them to jump to **Zoom to fit**, 50%, 100%, or 200%.",
+							"**Undo** and **Redo** sit just left of the zoom controls. They step back and forward through your edits.",
+							"The keyboard button next to **Save** lists every shortcut.",
+						],
+					},
+					{
+						type: "tip",
+						text: "**+** and **-** zoom, **Shift+1** fits the whole flow, and **Shift+0** returns to 100%. **⌘Z** undoes and **⌘⇧Z** redoes, or **Ctrl+Z** and **Ctrl+Shift+Z** on Windows. **Backspace** deletes the selected step and **Esc** closes the side panel.",
+					},
+				],
+			},
+			{
 				heading: "Save, then publish",
 				blocks: [
 					{
 						type: "paragraph",
 						text: "**Save** in the top bar stores your work as a draft. Nothing runs yet. Whenever your draft differs from what is live, a floating banner appears on the canvas with a publish button: **Publish workflow** the first time, **Publish changes** after that.",
+					},
+					{
+						type: "paragraph",
+						text: "Edits you haven't saved show an **Unsaved changes** marker in the top bar, and **Save** stays disabled until there is something new to save.",
 					},
 					{
 						type: "steps",
@@ -186,7 +211,7 @@ export const automationsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A collapsible drawer on the right side of the editor holds two tabs: **Resources** and **Debug**. The **Debug** tab is where you run safe test runs against real data and review what each step did, covered in [Testing and run history](/help/automations/testing-and-run-history).",
+						text: "A collapsible drawer on the left side of the editor holds two tabs: **Resources** and **Debug**. The **Debug** tab is where you run safe test runs against real data and review what each step did, covered in [Testing and run history](/help/automations/testing-and-run-history).",
 					},
 				],
 			},
@@ -199,6 +224,10 @@ export const automationsArticles: HelpArticle[] = [
 			{
 				question: "I deleted the trigger and the whole canvas cleared. Why?",
 				answer: "The trigger is the root of the flow, so removing it clears the canvas. The editor asks you to confirm before it does.",
+			},
+			{
+				question: "How do I delete an automation or start over?",
+				answer: "Open the **⋯** menu at the right end of the top bar. **Clear workflow** removes every step and keeps the trigger. **Delete automation** deletes the automation and its run history for good.",
 			},
 			{
 				question: "What does the beta badge in the editor mean?",
@@ -334,7 +363,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the automation in the editor.",
-							"Open the **Debug** tab in the drawer on the right.",
+							"Open the **Debug** tab in the drawer on the left.",
 							"Pick a sample record to run against if you want a specific one.",
 							"Click **Run test**.",
 						],
@@ -374,7 +403,7 @@ export const automationsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Runs** tab on the Automations page lists every individual run across all of your automations. Filter the list by status with the status dropdown, and click an automation's name to jump into its editor.",
+						text: "The **Runs** tab on the Automations page lists every individual run across all of your automations. Filter the list by status with the status dropdown. Click an automation's name to open the editor with that run shown on the canvas.",
 					},
 					{
 						type: "paragraph",
@@ -397,7 +426,15 @@ export const automationsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "To dig into the details, open the automation in the editor and use the **Debug** tab, the same place you run tests.",
+						text: "Click an automation's name in the **Runs** tab or under recent failures and the editor opens with that run on the canvas. Each step shows whether it succeeded, failed, or was skipped. A failed step shows its error at the bottom of its card. A step that succeeded shows how long it took and how many records it processed, and a loop shows how many items succeeded and failed. If a step also has a setup problem, its card shows that warning instead.",
+					},
+					{
+						type: "paragraph",
+						text: "Click a step to see its **Last run** details at the top of the settings panel: status, duration, records processed, and the error if it failed. **View in debug panel** opens that step in the **Debug** tab so you can read its input and output.",
+					},
+					{
+						type: "paragraph",
+						text: "A note at the top of the canvas shows when the run started. If the automation changed after that run, the note says some steps may not match what ran. Close the note, start a new test, or edit anything to go back to the plain editor.",
 					},
 				],
 			},

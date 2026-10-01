@@ -309,6 +309,39 @@ describe("computeDerivedLayout", () => {
 		);
 	});
 
+	it("places on whole pixels with every spine center colinear, even for odd widths", () => {
+		const nodes = [
+			N("__trigger__", "triggerNode"),
+			N("odd"),
+			N("cond", "conditionNode"),
+			N("y"),
+			N("n"),
+		];
+		const edges = [
+			edge("__trigger__", "odd"),
+			edge("odd", "cond"),
+			edge("cond", "y", "yes"),
+			edge("cond", "n", "no"),
+			edge("y", "__terminal__y"),
+			edge("n", "__terminal__n"),
+		];
+		const sizes: SizeLookup = (id, type) =>
+			id === "odd" ? { width: 301, height: 83.4 } : getDefaultNodeSize(type);
+		const { positions } = computeDerivedLayout(nodes, edges, "__trigger__", sizes);
+		const centerOf = (id: string) => {
+			const r = rectOf(id, nodes, positions, sizes);
+			return r.x + r.width / 2;
+		};
+		for (const [id, pos] of positions) {
+			expect(Number.isInteger(pos.y), `${id}.y`).toBe(true);
+			if (!id.startsWith("__terminal__")) {
+				expect(Number.isInteger(centerOf(id)), `${id} center`).toBe(true);
+			}
+		}
+		expect(centerOf("odd")).toBe(centerOf("__trigger__"));
+		expect(centerOf("cond")).toBe(centerOf("__trigger__"));
+	});
+
 	it("fans yes and no branches out symmetrically around the condition's spine", () => {
 		const nodes = [
 			N("__trigger__", "triggerNode"),

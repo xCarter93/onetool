@@ -3,26 +3,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ReactFlowProvider } from "@xyflow/react";
-import { AutomationFlow, FIT_VIEW_OPTIONS } from "../flow/automation-flow";
+import { AutomationFlow, useCanvasReserve } from "../flow/automation-flow";
 import { FlowZoomControls } from "../flow/flow-zoom-controls";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
-import { WorkflowDrawer } from "./workflow-drawer";
+import { WorkflowDrawer, type DrawerTab } from "./workflow-drawer";
+import type { DebugFocus } from "./debug-timeline";
+import { PastRunBanner } from "./past-run-banner";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
-import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
+import {
+	useKeyboardShortcuts,
+	type KeyboardShortcutOptions,
+} from "../../hooks/use-keyboard-shortcuts";
 import { useSidebarState } from "../../hooks/use-sidebar-state";
 import {
 	MERGE_PREFIX,
 	TERMINAL_PREFIX,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
+	isContainerId,
 	isGhostId,
+	isMergeId,
 	isTerminalId,
 } from "../../lib/flow-adapter";
 import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
 import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
-import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
+import { runEdgeClass, runStatusRingClass } from "../../lib/run-status";
+import { RunStatusContext } from "../flow/run-status-context";
 import { validateWorkflowForSave } from "../../lib/validation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -42,19 +50,45 @@ type NodeConfigType =
 	| "end"
 	| "next_item";
 
+/** Canvas-only nodes that never run, so they're never dimmed as "not reached". */
+function isCanvasOnlyNode(id: string): boolean {
+	return id === TRIGGER_NODE_ID || isContainerId(id) || isMergeId(id) || isTerminalId(id) || isGhostId(id);
+}
+
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {
 	return t === "send_notification" || t === "create_record" ? "action" : (t as NodeConfigType);
 }
 
-export function AutomationEditorScreen({ automationId }: { automationId: string | null }) {
+// The hook needs React Flow, so it runs inside the provider.
+function EditorKeyboardShortcuts(props: KeyboardShortcutOptions) {
+	useKeyboardShortcuts(props);
+	return null;
+}
+
+export function AutomationEditorScreen({
+	automationId,
+	runId,
+}: {
+	automationId: string | null;
+	runId: string | null;
+}) {
 	const router = useRouter();
-	const editor = useAutomationEditor(automationId);
+	const editor = useAutomationEditor(automationId, runId);
 	const { allows } = useEntitlements();
 	const canPublish = allows("automationPublish");
 	const sidebar = useSidebarState();
 	const [drawerOpen, setDrawerOpen] = useState(true);
+	const [drawerTab, setDrawerTab] = useState<DrawerTab>(runId ? "debug" : "resources");
+	const [debugFocus, setDebugFocus] = useState<DebugFocus | null>(null);
+	const canvasReserve = useCanvasReserve(drawerOpen, sidebar.isOpen);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
+	// The count re-keys the text so a repeated message is announced again.
+	const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
+	const announce = useCallback(
+		(text: string) => setAnnouncement((prev) => ({ text, count: prev.count + 1 })),
+		[]
+	);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
 		navigateFnRef.current = fn;
@@ -62,6 +96,18 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	const handleNavigateToNode = useCallback((nodeId: string) => {
 		navigateFnRef.current?.(nodeId);
+	}, []);
+
+	const handleViewInDebug = useCallback((nodeId: string) => {
+		setDrawerOpen(true);
+		setDrawerTab("debug");
+		setDebugFocus({ nodeId });
+	}, []);
+
+	// A stale focus would re-open its entry whenever the timeline remounts.
+	const handleDrawerTabChange = useCallback((tab: DrawerTab) => {
+		setDrawerTab(tab);
+		setDebugFocus(null);
 	}, []);
 
 	// Auto-open trigger picker for new/empty automations
@@ -76,45 +122,52 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		(edgeId: string, nodeType: string, actionType?: string) => {
 			const insertedId = editor.handleInsertNode(edgeId, nodeType, actionType);
 			if (!insertedId) return;
+			announce("Step added");
 			if (nodeType === "placeholder") {
 				sidebar.openStepPicker(insertedId);
 			} else {
 				sidebar.openNodeConfig(toSidebarType(nodeType), insertedId);
 			}
 		},
-		[editor, sidebar]
+		[announce, editor, sidebar]
 	);
 
-	// Inject onInsertNode into every edge; during a live run, animate the
-	// executed path (dashes flow along edges the run has traversed). Statuses
-	// are iteration-scoped so a loop condition lights only the branch the
-	// current iteration took. Synthetic edge endpoints resolve to the real
-	// node whose status they carry: the trigger implicitly succeeded once the
-	// run is live, merge dots carry their condition's status, terminal stubs
-	// their owner's.
+	// Inject onInsertNode into every edge and paint the run state onto edges
+	// (see runEdgeClass). Statuses are iteration-scoped so a loop condition
+	// marks only the branch the current iteration took. Synthetic edge
+	// endpoints resolve to the real node whose status they carry: the trigger
+	// implicitly succeeded once a run exists, merge dots carry their
+	// condition's status, terminal stubs their owner's.
 	const isLiveRun = editor.execution?.status === "running";
 	const flowEdges = useMemo(() => {
-		const statusFor = (id: string) => {
-			if (id === TRIGGER_NODE_ID) return "success" as const;
+		const realId = (id: string) => {
 			let real = id;
 			if (real.startsWith(TERMINAL_PREFIX)) {
 				real = real.slice(TERMINAL_PREFIX.length).replace(/-(after|yes|no)$/, "");
 			}
 			if (real.startsWith(MERGE_PREFIX)) real = real.slice(MERGE_PREFIX.length);
-			return editor.liveTraversalStatuses[real];
+			return real;
 		};
+		const statusFor = (real: string) =>
+			real === TRIGGER_NODE_ID ? ("success" as const) : editor.liveTraversalStatuses[real];
 		return editor.layoutedEdges.map((e) => {
 			const withInsert = { ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } };
-			if (!isLiveRun) return withInsert;
-			const flow = runEdgeFlowClass(statusFor(e.source), statusFor(e.target));
-			return flow
-				? { ...withInsert, className: cn(withInsert.className, flow) }
+			if (!editor.hasActiveRun) return withInsert;
+			const source = realId(e.source);
+			const target = realId(e.target);
+			// A node's edge into its own terminal stub resolves to one node.
+			if (source === target) return withInsert;
+			const runClass = runEdgeClass(statusFor(source), statusFor(target));
+			return runClass
+				? { ...withInsert, className: cn(withInsert.className, runClass) }
 				: withInsert;
 		});
-	}, [editor.layoutedEdges, editor.liveTraversalStatuses, handleEdgeInsert, isLiveRun]);
+	}, [editor.layoutedEdges, editor.liveTraversalStatuses, editor.hasActiveRun, handleEdgeInsert]);
 
-	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
-	// ghost "Choose a step" cards get the insert callback (they insert via
+	// Paint each node's run status onto its React Flow wrapper (ring/halo) and,
+	// while the run is live, dim steps it hasn't reached. The transition class
+	// stays on for the whole run so rings and dimming ease out, not pop.
+	// Ghost "Choose a step" cards get the insert callback (they insert via
 	// their incoming branch edge, same flow as the "+" buttons).
 	// First save-blocking problem per node, shown on the card itself. Placeholder
 	// errors are skipped (the placeholder card is the fix); trigger errors carry
@@ -151,24 +204,36 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 								},
 							}
 						: node;
-				const ring = runStatusRingClass(editor.runStatuses[node.id]);
-				return ring
-					? { ...withInsert, className: cn(withInsert.className, ring) }
-					: withInsert;
+				if (!editor.hasActiveRun) return withInsert;
+				const status = editor.runStatuses[node.id];
+				const dimmed =
+					isLiveRun &&
+					(status === undefined || status === "idle") &&
+					!isCanvasOnlyNode(node.id);
+				return {
+					...withInsert,
+					className: cn(
+						withInsert.className,
+						"rounded-lg transition-[box-shadow,opacity] duration-200 ease-(--ease-out-quint) motion-reduce:transition-none",
+						runStatusRingClass(status),
+						dimmed && "opacity-40"
+					),
+				};
 			}),
-		[editor.layoutedNodes, editor.runStatuses, handleEdgeInsert, nodeWarnings]
+		[editor.layoutedNodes, editor.runStatuses, editor.hasActiveRun, isLiveRun, handleEdgeInsert, nodeWarnings]
 	);
 
 	const handleDuplicateNode = useCallback(
 		(nodeId: string) => {
 			const newId = editor.handleDuplicateNode(nodeId);
 			if (!newId) return;
+			announce("Step duplicated");
 			const source = editor.nodes.find((n) => n.id === nodeId);
 			if (source && source.type !== "placeholder") {
 				sidebar.openNodeConfig(toSidebarType(source.type), newId);
 			}
 		},
-		[editor, sidebar]
+		[announce, editor, sidebar]
 	);
 
 	const handleNodeClick = useCallback(
@@ -207,13 +272,36 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	const handleDeleteNode = useCallback(
-		(nodeId: string) => { sidebar.closeSidebar(); editor.handleDeleteNode(nodeId); },
-		[editor, sidebar]
+		(nodeId: string) => {
+			sidebar.closeSidebar();
+			if (editor.handleDeleteNode(nodeId)) announce("Step deleted");
+		},
+		[announce, editor, sidebar]
 	);
 
 	const handleDeleteTrigger = useCallback(
-		() => { sidebar.closeSidebar(); editor.handleDeleteTrigger(); },
-		[editor, sidebar]
+		() => { sidebar.closeSidebar(); editor.handleDeleteTrigger(); announce("Trigger deleted"); },
+		[announce, editor, sidebar]
+	);
+
+	const handleUndo = useCallback(() => {
+		if (!editor.canUndo) return;
+		editor.handleUndo();
+		announce("Undone");
+	}, [announce, editor]);
+
+	const handleRedo = useCallback(() => {
+		if (!editor.canRedo) return;
+		editor.handleRedo();
+		announce("Redone");
+	}, [announce, editor]);
+
+	const canvasRun = useMemo(
+		() =>
+			editor.hasActiveRun
+				? { statuses: editor.runStatuses, results: editor.nodeResults, live: isLiveRun }
+				: null,
+		[editor.hasActiveRun, editor.runStatuses, editor.nodeResults, isLiveRun]
 	);
 
 	const selectedNode = useMemo(() => {
@@ -228,17 +316,6 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		}
 		return null;
 	}, [sidebar.mode]);
-
-	useKeyboardShortcuts({
-		selectedNode,
-		onDeleteNode: handleDeleteNode,
-		onDeleteTrigger: handleDeleteTrigger,
-		onUndo: editor.handleUndo,
-		onRedo: editor.handleRedo,
-		onCloseSidebar: sidebar.closeSidebar,
-		canUndo: editor.canUndo,
-		canRedo: editor.canRedo,
-	});
 
 	if (editor.isLoading) {
 		return (
@@ -279,28 +356,52 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	return (
 		<ReactFlowProvider>
+		<EditorKeyboardShortcuts
+			selectedNode={selectedNode}
+			reserve={canvasReserve}
+			onDeleteNode={handleDeleteNode}
+			onDeleteTrigger={handleDeleteTrigger}
+			onUndo={handleUndo}
+			onRedo={handleRedo}
+			onCloseSidebar={sidebar.closeSidebar}
+			canUndo={editor.canUndo}
+			canRedo={editor.canRedo}
+		/>
+		<RunStatusContext.Provider value={canvasRun}>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
+				automationId={editor.automation?._id ?? null}
 				name={editor.name}
 				description={editor.description}
 				status={editor.status}
 				isSaving={editor.isSaving}
+				hasUnsavedChanges={editor.hasUnsavedChanges}
+				canSave={editor.canSave}
+				canUndo={editor.canUndo}
+				canRedo={editor.canRedo}
+				canClear={editor.nodes.length > 0}
 				onBack={() => router.push("/automations")}
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
-				controls={<FlowZoomControls fitViewOptions={FIT_VIEW_OPTIONS} className="hidden md:flex" />}
+				onUndo={handleUndo}
+				onRedo={handleRedo}
+				onClearWorkflow={editor.handleRequestClear}
+				controls={<FlowZoomControls reserve={canvasReserve} className="hidden md:flex" />}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<div className="relative min-h-0 min-w-0 flex-1 bg-(--workspace-ground)">
 					<AutomationFlow
 						nodes={flowNodes}
 						edges={flowEdges}
+						reserve={canvasReserve}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
-							onNavigateReady={handleNavigateReady}
+						onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 						onDuplicateNode={handleDuplicateNode}
+						runId={editor.execution?._id}
+						followNodeId={isLiveRun ? editor.execution?.currentNodeId : undefined}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}
 					<WorkflowDrawer
@@ -309,19 +410,32 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						rfNodes={editor.layoutedNodes}
 						onNavigateToNode={handleNavigateToNode}
 						open={drawerOpen}
-						onToggle={() => setDrawerOpen((o) => !o)}
+						onToggle={() => {
+							setDrawerOpen((o) => !o);
+							setDebugFocus(null);
+						}}
+						tab={drawerTab}
+						onTabChange={handleDrawerTabChange}
+						debugFocus={debugFocus}
 						formulas={editor.formulas}
 						onFormulasChange={editor.onFormulasChange}
 						formulaWarnings={formulaWarnings}
 						sampleRecords={editor.sampleRecords}
 						execution={editor.execution}
-						isRunning={editor.isRunning}
+						// Stop cancels test runs only; a viewed production run can't be stopped here.
+						isRunning={editor.isRunning && editor.execution?.dryRun === true}
 						isStartingTest={editor.isStartingTest}
 						hasActiveRun={editor.hasActiveRun}
 						onStartTest={editor.handleStartTest}
 						onCancelTest={editor.handleCancelTest}
 					/>
-					{editor.needsPublish && (
+					{editor.viewingPastRun && editor.execution ? (
+						<PastRunBanner
+							execution={editor.execution}
+							outdated={editor.runOutdated}
+							onClose={editor.clearRun}
+						/>
+					) : editor.needsPublish && (
 						<UnpublishedBanner
 							isPublished={editor.isPublished}
 							publishLabel={editor.publishLabel}
@@ -331,7 +445,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						/>
 					)}
 					{editor.undoBanner && (
-						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
+						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={handleUndo} />
 					)}
 					{/* Floating config panel — right-side twin of the WorkflowDrawer, over the canvas. */}
 					<AutomationSidebar
@@ -340,6 +454,9 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						trigger={editor.trigger}
 						nodes={editor.nodes}
 						formulas={editor.formulas}
+						nodeWarnings={nodeWarnings}
+						runResults={editor.hasActiveRun ? editor.nodeResults : null}
+						onViewInDebug={handleViewInDebug}
 						onClose={sidebar.closeSidebar}
 						onTriggerTypeSelect={handleTriggerTypeSelect}
 						onStepTypeSelect={handleStepTypeSelect}
@@ -347,14 +464,16 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNodeChange={editor.handleNodeChange}
 						onDeleteNode={handleDeleteNode}
 						onDeleteTrigger={handleDeleteTrigger}
-						onNavigateToNode={handleNavigateToNode}
-						rfNodes={editor.layoutedNodes}
-						rfEdges={editor.layoutedEdges}
+						onDuplicateNode={handleDuplicateNode}
 					/>
 				</div>
 			</div>
+			<p role="status" aria-live="polite" className="sr-only">
+				<span key={announcement.count}>{announcement.text}</span>
+			</p>
 			<ClearWorkflowDialog open={editor.showClearConfirm} onCancel={editor.handleCancelClear} onConfirm={editor.handleConfirmClear} />
 		</div>
+		</RunStatusContext.Provider>
 		</ReactFlowProvider>
 	);
 }

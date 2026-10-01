@@ -21,17 +21,7 @@ export const PlaceholderNodeRF = memo(({ id }: NodeProps<PlaceholderRFNode>) => 
 	const card = (
 		<BaseNode
 			className="group/placeholder w-[300px] border-dashed border-muted-foreground/30"
-			role="button"
 			aria-label="Empty step — click to configure"
-			onKeyDown={(e) => {
-				// BaseNode is a focusable div — without this the card is reachable
-				// by keyboard but not activatable. The synthetic click bubbles to
-				// React Flow's node wrapper and triggers the same onNodeClick path.
-				if (e.key !== "Enter" && e.key !== " ") return;
-				e.preventDefault();
-				e.stopPropagation();
-				e.currentTarget.click();
-			}}
 		>
 			<BaseHandle type="target" position={Position.Top} />
 			<div className="flex h-11 items-center gap-2 px-3 text-sm text-muted-foreground">

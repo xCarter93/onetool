@@ -341,15 +341,22 @@ export function computeDerivedLayout(
 		if (ref.isTerminal) {
 			// Terminal node is a 1x1 point at the stub's end (the "+" button);
 			// like every node, its top-LEFT converts from the spine center.
-			positions.set(ref.id, { x: spineX - 0.5, y: topY + TERMINAL_DROP });
+			positions.set(ref.id, {
+				x: Math.round(spineX) - 0.5,
+				y: Math.round(topY + TERMINAL_DROP),
+			});
 			return;
 		}
 		place(ref.id, spineX, topY);
 	}
 
-	function place(nodeId: string, spineX: number, topY: number) {
+	function place(nodeId: string, rawSpineX: number, rawTopY: number) {
 		if (placed.has(nodeId)) return;
 		placed.add(nodeId);
+		// Whole-pixel spine and top keep hairlines crisp; rounding the spine (not
+		// the card's left) keeps every center on it, so vertical edges never slant.
+		const spineX = Math.round(rawSpineX);
+		const topY = Math.round(rawTopY);
 
 		const size = sizeOf(nodeId);
 		positions.set(nodeId, { x: spineX - size.width / 2, y: topY });
@@ -375,7 +382,7 @@ export function computeDerivedLayout(
 			if (kids.each) placeChild(kids.each, spineX, bottom + gapAbove(kids.each));
 			if (meta) {
 				const rect: ContainerRect = {
-					x: spineX - meta.containerLeft,
+					x: Math.round(spineX - meta.containerLeft),
 					y: topY - LOOP_PAD_TOP,
 					width: meta.containerLeft + meta.containerRight,
 					height: LOOP_PAD_TOP + meta.containerBottom,

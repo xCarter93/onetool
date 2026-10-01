@@ -111,6 +111,7 @@ export function BranchLabelEdge(props: EdgeProps) {
 						onInsert={onInsertNode}
 						variant={isTerminal ? "stub" : "inline"}
 						edgeHovered={hovered}
+						label={label ? `Add a step on the ${label} path` : undefined}
 					/>
 				)}
 				{impliedNextItem && <NextItemMarker x={plusX} y={plusY + 18} />}

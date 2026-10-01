@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Copy, EllipsisVertical, Trash2, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeHeaderTitle } from "@/components/base-node";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -18,7 +19,15 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
+import { NOT_DUPLICABLE_REASON } from "../../lib/duplicable";
+import {
+	RUN_STATUS_META,
+	nodeResultFacts,
+	type NodeRunResult,
+	type NodeRunStatus,
+} from "../../lib/run-status";
 import { useNodeActions } from "./node-actions-context";
+import { useCanvasRun } from "./run-status-context";
 
 interface FlowNodeCardProps {
 	nodeId: string;
@@ -38,7 +47,48 @@ interface FlowNodeCardProps {
 	className?: string;
 }
 
-const NOT_DUPLICABLE = "Branching steps can't be duplicated yet";
+// The slot stays reserved for the whole run so the header never shifts as steps
+// change state; the glyph inherits the band color and the wrapper ring carries tone.
+function RunStatusIcon({ status }: { status: NodeRunStatus | undefined }) {
+	if (!status || status === "idle") return <span className="size-4 shrink-0" aria-hidden />;
+	const { icon: Icon, label } = RUN_STATUS_META[status];
+	return (
+		<span className="flex size-4 shrink-0 items-center justify-center">
+			{Icon ? (
+				<Icon className="size-4" aria-hidden />
+			) : (
+				<Spinner className="size-4 motion-reduce:animate-none" role="presentation" aria-hidden aria-label={undefined} />
+			)}
+			<span className="sr-only">{label}</span>
+		</span>
+	);
+}
+
+const FOOTER = "flex items-center gap-1.5 border-t border-border px-3 py-1.5 text-xs";
+
+function RunResultLine({ result }: { result: NodeRunResult }) {
+	if (result.status === "failed") {
+		const error = result.error ?? "This step failed";
+		return (
+			<div className={cn(FOOTER, "text-destructive")} title={error}>
+				<span className="truncate">{error}</span>
+			</div>
+		);
+	}
+	if (result.status !== "success") return null;
+	const facts = nodeResultFacts(result);
+	if (facts.length === 0) return null;
+	return (
+		<div className={cn(FOOTER, "tabular-nums text-muted-foreground")}>
+			{facts.map((fact, i) => (
+				<Fragment key={fact}>
+					{i > 0 && <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground/40" />}
+					<span className="truncate">{fact}</span>
+				</Fragment>
+			))}
+		</div>
+	);
+}
 
 export function FlowNodeCard({
 	nodeId,
@@ -56,15 +106,24 @@ export function FlowNodeCard({
 	const { band } = STEP_FAMILY_STYLE[family];
 	const actions = useNodeActions();
 	const showMenu = menu && (actions.onDuplicate || actions.onDelete);
+	const run = useCanvasRun();
+	const runStatus = run?.statuses[nodeId];
+	// Held until the run finishes: footers growing mid-stream would reflow the graph.
+	const runResult = run && !run.live ? run.results[nodeId] : undefined;
+	const runLabel = runStatus && runStatus !== "idle" ? RUN_STATUS_META[runStatus].label : null;
 
 	const card = (
-		<BaseNode className={cn("w-[300px]", className)} aria-label={ariaLabel}>
+		<BaseNode
+			className={cn("w-[300px]", className)}
+			aria-label={runLabel ? `${ariaLabel}, ${runLabel}` : ariaLabel}
+		>
 			{handles}
 			<header
 				className={cn("flex h-9 items-center gap-2 rounded-t-[inherit] px-3", band)}
 			>
 				<Icon className="h-4 w-4 shrink-0" aria-hidden />
 				<BaseNodeHeaderTitle className="truncate text-sm">{title}</BaseNodeHeaderTitle>
+				{run && <RunStatusIcon status={runStatus} />}
 				{showMenu && (
 					<DropdownMenu>
 						<DropdownMenuTrigger
@@ -86,7 +145,7 @@ export function FlowNodeCard({
 								onClick={() => actions.onDuplicate?.(nodeId)}
 							>
 								<Copy />
-								{duplicable ? "Duplicate" : NOT_DUPLICABLE}
+								{duplicable ? "Duplicate" : NOT_DUPLICABLE_REASON}
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								variant="destructive"
@@ -101,6 +160,7 @@ export function FlowNodeCard({
 				)}
 			</header>
 			<p className="px-3 py-2.5 text-sm leading-5 text-muted-foreground">{children}</p>
+			{!warning && runResult && <RunResultLine result={runResult} />}
 			{warning && (
 				<>
 					<div
@@ -132,7 +192,7 @@ export function FlowNodeCard({
 					onClick={() => actions.onDuplicate?.(nodeId)}
 				>
 					<Copy />
-					{duplicable ? "Duplicate" : NOT_DUPLICABLE}
+					{duplicable ? "Duplicate" : NOT_DUPLICABLE_REASON}
 				</ContextMenuItem>
 				<ContextMenuItem
 					variant="destructive"

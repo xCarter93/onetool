@@ -1,8 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Copy, Trash2, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/reui/alert";
+import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import type {
 	ActionNodeConfig,
@@ -10,9 +19,15 @@ import type {
 	TriggerConfig,
 	WorkflowNode,
 } from "../../lib/node-types";
-import type { EditorNode } from "../../lib/flow-adapter";
+import {
+	TRIGGER_NODE_ID,
+	TRIGGER_PLACEHOLDER_ID,
+	type EditorNode,
+} from "../../lib/flow-adapter";
+import { NOT_DUPLICABLE_REASON, isDuplicableStep } from "../../lib/duplicable";
 import { getScopeObjectType } from "../../lib/variables";
 import { STEP_FAMILY_STYLE, stepIdentity, type StepIdentity } from "../../lib/step-family";
+import type { NodeRunResult } from "../../lib/run-status";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -23,7 +38,7 @@ import { LoopConfigPanel } from "./panels/loop-config";
 import { AggregateConfigPanel } from "./panels/aggregate-config";
 import { AdjustTimeConfigPanel } from "./panels/adjust-time-config";
 import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
-import { DeleteStepButton } from "./panels/delete-step-button";
+import { StepLastRun } from "./panels/step-last-run";
 
 export type SidebarMode =
 	| { mode: "trigger-picker" }
@@ -49,9 +64,6 @@ export interface ConfigPanelProps {
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
 	onDeleteTrigger?: () => void;
-	onNavigateToNode?: (nodeId: string) => void;
-	rfNodes?: import("@xyflow/react").Node[];
-	rfEdges?: import("@xyflow/react").Edge[];
 }
 
 const CONFIG_PANELS: Record<string, React.ComponentType<ConfigPanelProps>> = {
@@ -87,12 +99,34 @@ function panelTitle(mode: SidebarMode, identity: StepIdentity | null, hasTrigger
 	return identity?.name ?? "Configure";
 }
 
+/** Canvas node the panel belongs to; focus returns here on close. */
+function canvasNodeId(mode: SidebarMode, hasTrigger: boolean): string {
+	if (mode.mode === "trigger-picker") return hasTrigger ? TRIGGER_NODE_ID : TRIGGER_PLACEHOLDER_ID;
+	if (mode.mode === "step-picker") return mode.placeholderNodeId;
+	return mode.nodeType === "trigger" ? TRIGGER_NODE_ID : mode.nodeId;
+}
+
+/** False once undo/redo/clear has removed the step the panel is editing. */
+function targetExists(mode: SidebarMode, nodes: EditorNode[], trigger: TriggerConfig | null): boolean {
+	if (mode.mode === "trigger-picker") return true;
+	if (mode.mode === "node-config" && mode.nodeType === "trigger") return trigger !== null;
+	const id = mode.mode === "step-picker" ? mode.placeholderNodeId : mode.nodeId;
+	return nodes.some((n) => n.id === id);
+}
+
+const BELOW_LG = "(max-width: 1023px)";
+
 interface AutomationSidebarProps {
 	isOpen: boolean;
 	mode: SidebarMode | null;
 	trigger: TriggerConfig | null;
 	nodes: EditorNode[];
 	formulas?: FormulaResource[];
+	/** First save-blocking problem per node id, the same text the canvas card shows. */
+	nodeWarnings: Map<string, string>;
+	/** Per-step results of the run on the canvas; null when there is none. */
+	runResults: Record<string, NodeRunResult> | null;
+	onViewInDebug: (nodeId: string) => void;
 	onClose: () => void;
 	onTriggerTypeSelect: (triggerType: string) => void;
 	onStepTypeSelect: (
@@ -104,9 +138,7 @@ interface AutomationSidebarProps {
 	onNodeChange: (nodeId: string, updates: Partial<WorkflowNode>) => void;
 	onDeleteNode?: (nodeId: string) => void;
 	onDeleteTrigger?: () => void;
-	onNavigateToNode?: (nodeId: string) => void;
-	rfNodes?: import("@xyflow/react").Node[];
-	rfEdges?: import("@xyflow/react").Edge[];
+	onDuplicateNode?: (nodeId: string) => void;
 }
 
 export function AutomationSidebar({
@@ -115,6 +147,9 @@ export function AutomationSidebar({
 	trigger,
 	nodes,
 	formulas = [],
+	nodeWarnings,
+	runResults,
+	onViewInDebug,
 	onClose,
 	onTriggerTypeSelect,
 	onStepTypeSelect,
@@ -122,42 +157,67 @@ export function AutomationSidebar({
 	onNodeChange,
 	onDeleteNode,
 	onDeleteTrigger,
-	onNavigateToNode,
-	rfNodes,
-	rfEdges,
+	onDuplicateNode,
 }: AutomationSidebarProps) {
+	const belowLg = useMediaQuery(BELOW_LG) ?? false;
+	const asideRef = useRef<HTMLElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
+	const openerRef = useRef<HTMLElement | null>(null);
+
+	// Keeps the last mode through the close transition; cleared once it finishes.
+	const [shownMode, setShownMode] = useState(mode);
+	if (mode && mode !== shownMode) setShownMode(mode);
+	const activeMode = mode ?? shownMode;
+	const hasTarget = activeMode ? targetExists(activeMode, nodes, trigger) : false;
+	const focusNodeId = shownMode ? canvasNodeId(shownMode, trigger !== null) : null;
 
 	useEffect(() => {
-		if (isOpen && contentRef.current) {
-			const timer = setTimeout(() => {
-				const firstInput = contentRef.current?.querySelector<HTMLElement>(
-					"input, select, button[role='combobox']"
-				);
-				firstInput?.focus();
-			}, 250);
-			return () => clearTimeout(timer);
+		if (isOpen && mode && !targetExists(mode, nodes, trigger)) onClose();
+	}, [isOpen, mode, nodes, trigger, onClose]);
+
+	// The sheet manages its own focus; skipping this there also keeps the phone keyboard shut.
+	useEffect(() => {
+		if (!isOpen || belowLg) return;
+		const timer = setTimeout(() => {
+			contentRef.current
+				?.querySelector<HTMLElement>("input, select, button[role='combobox']")
+				?.focus();
+		}, 250);
+		return () => clearTimeout(timer);
+	}, [isOpen, belowLg, mode]);
+
+	useEffect(() => {
+		if (belowLg) return;
+		if (isOpen) {
+			openerRef.current ??= document.activeElement as HTMLElement | null;
+			return;
 		}
-	}, [isOpen, mode]);
+		const opener = openerRef.current;
+		openerRef.current = null;
+		if (!opener) return;
+		// Inert blurs the panel to <body>; leave focus alone if the user already moved it elsewhere.
+		const active = document.activeElement;
+		if (active && active !== document.body && !asideRef.current?.contains(active)) return;
+		const node = focusNodeId
+			? document.querySelector<HTMLElement>(
+					`.react-flow__node[data-id="${CSS.escape(focusNodeId)}"]`
+				)
+			: null;
+		(node ?? opener).focus();
+	}, [isOpen, belowLg, focusNodeId]);
 
-	useEffect(() => {
-		if (!isOpen) return;
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") {
-				e.preventDefault();
-				onClose();
-			}
-		};
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [isOpen, onClose]);
-
-	if (!isOpen || !mode) return null;
-
-	const identity = panelIdentity(mode, nodes);
-	const title = panelTitle(mode, identity, trigger !== null);
+	const identity = activeMode ? panelIdentity(activeMode, nodes) : null;
+	const title = activeMode ? panelTitle(activeMode, identity, trigger !== null) : "";
 	const family = identity ? STEP_FAMILY_STYLE[identity.family] : null;
 	const Icon = identity?.icon;
+	const configNodeId =
+		activeMode?.mode === "node-config"
+			? activeMode.nodeType === "trigger"
+				? TRIGGER_NODE_ID
+				: activeMode.nodeId
+			: null;
+	const warning = configNodeId ? nodeWarnings.get(configNodeId) : undefined;
+	const lastRun = configNodeId ? runResults?.[configNodeId] : undefined;
 
 	const configProps: ConfigPanelProps = {
 		trigger,
@@ -167,13 +227,9 @@ export function AutomationSidebar({
 		onNodeChange,
 		onDeleteNode,
 		onDeleteTrigger,
-		onNavigateToNode,
-		rfNodes,
-		rfEdges,
 	};
 
-	function renderContent() {
-		if (!mode) return null;
+	function renderContent(mode: SidebarMode) {
 		switch (mode.mode) {
 			case "trigger-picker":
 				return <TriggerPicker onSelect={onTriggerTypeSelect} />;
@@ -217,31 +273,45 @@ export function AutomationSidebar({
 		}
 	}
 
-	function renderFooter() {
-		if (!mode) return null;
-		if (mode.mode === "step-picker" && onDeleteNode) {
-			return (
-				<DeleteStepButton
-					label="Remove empty step"
-					onDelete={() => onDeleteNode(mode.placeholderNodeId)}
-				/>
-			);
+	function renderFooterActions(mode: SidebarMode) {
+		if (mode.mode === "step-picker") {
+			return onDeleteNode ? (
+				<DeleteButton label="Remove empty step" onClick={() => onDeleteNode(mode.placeholderNodeId)} />
+			) : null;
 		}
 		if (mode.mode !== "node-config") return null;
 		if (mode.nodeType === "trigger") {
-			return onDeleteTrigger ? (
-				<DeleteStepButton label="Delete trigger" onDelete={onDeleteTrigger} />
-			) : null;
+			return onDeleteTrigger ? <DeleteButton label="Delete trigger" onClick={onDeleteTrigger} /> : null;
 		}
-		return onDeleteNode ? (
-			<DeleteStepButton onDelete={() => onDeleteNode(mode.nodeId)} />
-		) : null;
+		const duplicable = isDuplicableStep(mode.nodeType);
+		return (
+			<>
+				{onDuplicateNode && !duplicable && (
+					<p id="duplicate-step-reason" className="mr-auto text-xs text-muted-foreground">
+						{NOT_DUPLICABLE_REASON}
+					</p>
+				)}
+				{onDuplicateNode && (
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={!duplicable}
+						aria-describedby={duplicable ? undefined : "duplicate-step-reason"}
+						onClick={() => onDuplicateNode(mode.nodeId)}
+					>
+						<Copy />
+						Duplicate
+					</Button>
+				)}
+				{onDeleteNode && <DeleteButton label="Delete step" onClick={() => onDeleteNode(mode.nodeId)} />}
+			</>
+		);
 	}
 
-	return (
-		<div
-			className="absolute bottom-3 right-3 top-3 z-10 flex w-[440px] max-w-[calc(100%-1.5rem)] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-floating motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-4"
-		>
+	const footerActions = activeMode && hasTarget ? renderFooterActions(activeMode) : null;
+
+	const panel = activeMode && (
+		<div className="flex h-full min-h-0 flex-col">
 			<div
 				className={cn(
 					"flex shrink-0 items-center gap-2.5 py-2.5 pl-4 pr-2",
@@ -270,10 +340,77 @@ export function AutomationSidebar({
 
 			{/* min-h-0 lets this flex child shrink below its content so overflow-auto scrolls. */}
 			<div ref={contentRef} className="min-h-0 flex-1 overflow-auto px-4 py-2">
-				{renderContent()}
+				{hasTarget && warning && (
+					<Alert variant="warning" role="status" className="mb-3 mt-1">
+						<TriangleAlert aria-hidden />
+						<AlertDescription>{warning}</AlertDescription>
+					</Alert>
+				)}
+				{hasTarget && lastRun && configNodeId && (
+					<StepLastRun
+						result={lastRun}
+						onViewInDebug={() => {
+							onViewInDebug(configNodeId);
+							// The sheet would cover the drawer.
+							if (belowLg) onClose();
+						}}
+					/>
+				)}
+				{hasTarget && renderContent(activeMode)}
 			</div>
 
-			{renderFooter()}
+			{footerActions && (
+				<div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-4 py-3">
+					{footerActions}
+				</div>
+			)}
 		</div>
+	);
+
+	return (
+		<>
+			{!belowLg && (
+				<aside
+					ref={asideRef}
+					aria-label={title || "Step panel"}
+					inert={!isOpen}
+					onTransitionEnd={(e) => {
+						if (e.target === e.currentTarget && !isOpen) setShownMode(null);
+					}}
+					className={cn(
+						"absolute bottom-3 right-3 top-3 z-10 w-[440px] max-w-[calc(100%-1.5rem)] overflow-hidden rounded-lg border border-border bg-card shadow-floating transition-[opacity,translate] ease-(--ease-out-quint) motion-reduce:transition-none",
+						isOpen
+							? "translate-x-0 opacity-100 duration-200"
+							: "pointer-events-none translate-x-4 opacity-0 duration-150"
+					)}
+				>
+					{panel}
+				</aside>
+			)}
+
+			{/* Mounted while closed so the first open still plays the sheet transition. */}
+			<Sheet
+				open={belowLg && isOpen}
+				onOpenChange={(open) => !open && onClose()}
+				onOpenChangeComplete={(open) => !open && setShownMode(null)}
+			>
+				<SheetContent side="bottom" showCloseButton={false} className="h-[85dvh] gap-0 p-0">
+					<SheetHeader className="sr-only">
+						<SheetTitle>{title}</SheetTitle>
+						<SheetDescription>Configure this step of the automation.</SheetDescription>
+					</SheetHeader>
+					{panel}
+				</SheetContent>
+			</Sheet>
+		</>
+	);
+}
+
+function DeleteButton({ label, onClick }: { label: string; onClick: () => void }) {
+	return (
+		<Button variant="outline" size="sm" className="text-destructive" onClick={onClick}>
+			<Trash2 />
+			{label}
+		</Button>
 	);
 }

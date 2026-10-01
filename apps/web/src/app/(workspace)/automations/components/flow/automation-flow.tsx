@@ -11,10 +11,13 @@ import {
 	useReactFlow,
 	type Node,
 	type Edge,
+	type FitViewOptions,
 	type NodeMouseHandler,
+	type OnMoveEnd,
 } from "@xyflow/react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { HoveredEdgeContext } from "./edge-hover-context";
 import { NodeActionsContext, type NodeActions } from "./node-actions-context";
 import {
@@ -91,24 +94,72 @@ const LAYOUT_ANIMATION_MS = 220;
 // so an inline literal would re-render every edge on every host render.
 const DEFAULT_EDGE_OPTIONS = { interactionWidth: 24 } as const;
 
-// Per-side fitView padding so auto-fit keeps nodes clear of the floating chrome:
-// the left WorkflowDrawer (~320px), the right config panel (~440px), and the
-// bottom assistant notch. maxZoom:1 means small graphs re-center rather than shrink.
-export const FIT_VIEW_OPTIONS = {
-	padding: { top: "24px", right: "460px", bottom: "72px", left: "340px" },
-	duration: 300,
-	maxZoom: 1,
-} as const;
+const CAMERA_MS = 300;
+const FIT_TOP = 24;
+// Clears the bottom assistant notch.
+const FIT_BOTTOM = 72;
+
+/** Canvas width covered by the floating panels on each side, in px. */
+export interface CanvasReserve {
+	left: number;
+	right: number;
+}
+
+/**
+ * Left: the 320px WorkflowDrawer, or its 40px rail when collapsed. Right: the
+ * 440px config panel. Below md both panels cover the whole canvas, so only a gutter.
+ */
+export function useCanvasReserve(drawerOpen: boolean, sidebarOpen: boolean): CanvasReserve {
+	const narrow = useIsMobile();
+	return useMemo(
+		() =>
+			narrow
+				? { left: 16, right: 16 }
+				: { left: drawerOpen ? 340 : 64, right: sidebarOpen ? 460 : 24 },
+		[drawerOpen, narrow, sidebarOpen]
+	);
+}
+
+// maxZoom:1 means small graphs re-center rather than grow.
+export function fitViewOptionsFor(reserve: CanvasReserve, duration: number): FitViewOptions {
+	return {
+		padding: {
+			top: `${FIT_TOP}px`,
+			right: `${reserve.right}px`,
+			bottom: `${FIT_BOTTOM}px`,
+			left: `${reserve.left}px`,
+		},
+		duration,
+		maxZoom: 1,
+	};
+}
+
+function prefersReducedMotion() {
+	return (
+		typeof window !== "undefined" &&
+		window.matchMedia("(prefers-reduced-motion: reduce)").matches
+	);
+}
+
+/** Camera duration for fitView/setCenter/zoom calls; 0 under reduced motion. */
+export function cameraMs(ms = CAMERA_MS) {
+	return prefersReducedMotion() ? 0 : ms;
+}
 
 interface AutomationFlowProps {
 	nodes: Node[];
 	edges: Edge[];
+	reserve: CanvasReserve;
 	onNodeClick?: (nodeId: string) => void;
 	onPaneClick?: () => void;
 	onDeleteNode?: (nodeId: string) => void;
 	onDuplicateNode?: (nodeId: string) => void;
 	/** Callback ref that receives a navigate function once React Flow is ready */
 	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
+	/** Test run on the canvas; a new id resumes following after a manual pan. */
+	runId?: string;
+	/** Running step of a live run; the viewport follows it until the user pans. */
+	followNodeId?: string;
 }
 
 function AutomationFlowInner({
@@ -119,8 +170,11 @@ function AutomationFlowInner({
 	onDeleteNode,
 	onDuplicateNode,
 	onNavigateReady,
+	reserve,
+	runId,
+	followNodeId,
 }: AutomationFlowProps) {
-	const { fitView, setCenter } = useReactFlow();
+	const { fitView, setCenter, setViewport, getZoom } = useReactFlow();
 	// React Flow defaults to colorMode="light", stamping `.light` on its
 	// container — which re-resolves the app's .light theme tokens over the
 	// whole canvas subtree in dark mode. Keep it synced to the real theme.
@@ -140,6 +194,10 @@ function AutomationFlowInner({
 	const idsSigRef = useRef(incomingNodes.map((n) => n.id).join(","));
 	// True at mount so the first measured layout refits (estimate heights may be off).
 	const pendingFitRef = useRef(true);
+	// The load fit lands without a glide; later fits animate.
+	const hasFitRef = useRef(false);
+	const reserveRef = useRef(reserve);
+	const [initialFitOptions] = useState(() => fitViewOptionsFor(reserve, 0));
 	// Ids ever seen — newly appearing nodes get the flow-node-enter settle
 	// animation stamped on their very first commit (before measurement lands),
 	// so the animation's first visible frame is the node's first visible frame.
@@ -203,9 +261,7 @@ function AutomationFlowInner({
 			setEdges(targetEdges);
 
 			const prevById = new Map(nodesRef.current.map((n) => [n.id, n]));
-			const reduced =
-				typeof window !== "undefined" &&
-				window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+			const reduced = prefersReducedMotion();
 			const moved = targetNodes.some((n) => {
 				const prev = prevById.get(n.id);
 				if (!prev) return false; // new nodes appear in place
@@ -218,8 +274,10 @@ function AutomationFlowInner({
 			const finishFit = () => {
 				if (pendingFitRef.current) {
 					pendingFitRef.current = false;
+					const duration = hasFitRef.current ? cameraMs() : 0;
+					hasFitRef.current = true;
 					requestAnimationFrame(() => {
-						fitView(FIT_VIEW_OPTIONS);
+						fitView(fitViewOptionsFor(reserveRef.current, duration));
 					});
 				}
 			};
@@ -314,22 +372,57 @@ function AutomationFlowInner({
 		applyLayoutAnimated(applied.nodes, applied.edges);
 	}, [applyLayoutAnimated, edges, nodes]);
 
+	// Opening or closing the drawer moves the free band, so reframe; the config
+	// panel opens on every node click and leaves the camera alone.
+	const fittedLeftRef = useRef(reserve.left);
+	useEffect(() => {
+		reserveRef.current = reserve;
+		if (reserve.left === fittedLeftRef.current) return;
+		fittedLeftRef.current = reserve.left;
+		fitView(fitViewOptionsFor(reserve, cameraMs()));
+	}, [fitView, reserve]);
+
+	const centerOnNode = useCallback(
+		(nodeId: string, zoom: number) => {
+			const targetNode = nodesRef.current.find((n) => n.id === nodeId);
+			if (!targetNode) return false;
+			const width = targetNode.measured?.width ?? 300;
+			const height = targetNode.measured?.height ?? 60;
+			const { left, right } = reserveRef.current;
+			// setCenter centers on the whole canvas; offset so the node lands in
+			// the middle of the band the panels leave free.
+			setCenter(
+				targetNode.position.x + width / 2 + (right - left) / 2 / zoom,
+				targetNode.position.y + height / 2 + (FIT_BOTTOM - FIT_TOP) / 2 / zoom,
+				{ zoom, duration: cameraMs() }
+			);
+			return true;
+		},
+		[setCenter]
+	);
+
 	// Expose a navigate-to-node function to the parent via callback ref
 	const navigateToNode = useCallback(
 		(nodeId: string) => {
-			const targetNode = nodesRef.current.find((n) => n.id === nodeId);
-			if (!targetNode) return;
-			const width = targetNode.measured?.width ?? 300;
-			const height = targetNode.measured?.height ?? 60;
-			setCenter(
-				targetNode.position.x + width / 2,
-				targetNode.position.y + height / 2,
-				{ zoom: 1, duration: 300 }
-			);
-			onNodeClick?.(nodeId);
+			if (centerOnNode(nodeId, 1)) onNodeClick?.(nodeId);
 		},
-		[setCenter, onNodeClick]
+		[centerOnNode, onNodeClick]
 	);
+
+	// Programmatic viewport moves report a null event, so only a real
+	// pan/zoom gesture stops the follow.
+	const userMovedRef = useRef(false);
+	const handleMoveStart = useCallback((event: MouseEvent | TouchEvent | null) => {
+		if (event) userMovedRef.current = true;
+	}, []);
+
+	useEffect(() => {
+		userMovedRef.current = false;
+	}, [runId]);
+
+	useEffect(() => {
+		if (followNodeId && !userMovedRef.current) centerOnNode(followNodeId, getZoom());
+	}, [followNodeId, centerOnNode, getZoom]);
 
 	useEffect(() => {
 		onNavigateReady?.(navigateToNode);
@@ -362,6 +455,20 @@ function AutomationFlowInner({
 		[onDuplicateNode, onDeleteNode]
 	);
 
+	// Fit centers on half pixels, which blurs 1px borders and edges; settle each
+	// move on whole pixels. The layout tween ends in its own fit, which lands here.
+	const snapViewport = useCallback<OnMoveEnd>(
+		(_event, viewport) => {
+			if (animRef.current !== null) return;
+			const x = Math.round(viewport.x);
+			const y = Math.round(viewport.y);
+			if (x !== viewport.x || y !== viewport.y) {
+				void setViewport({ x, y, zoom: viewport.zoom });
+			}
+		},
+		[setViewport]
+	);
+
 	const handlePaneClickInternal = useCallback(() => {
 		setHoveredEdgeId(null);
 		onPaneClick?.();
@@ -378,12 +485,14 @@ function AutomationFlowInner({
 				onEdgesChange={onEdgesChange}
 				onNodeClick={handleNodeClick}
 				onPaneClick={handlePaneClickInternal}
+				onMoveStart={handleMoveStart}
 				onEdgeMouseEnter={handleEdgeMouseEnter}
 				onEdgeMouseLeave={handleEdgeMouseLeave}
+				onMoveEnd={snapViewport}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				fitView
-				fitViewOptions={FIT_VIEW_OPTIONS}
+				fitViewOptions={initialFitOptions}
 				nodesDraggable={false}
 				nodesFocusable={true}
 				edgesFocusable={true}

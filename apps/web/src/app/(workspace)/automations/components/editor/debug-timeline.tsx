@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	CheckCircle2,
 	XCircle,
@@ -176,16 +176,27 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
 	);
 }
 
+/** A request to open one step's entry; a new object re-applies the same step. */
+export type DebugFocus = { nodeId: string };
+
+/** The step's first failure, else its first entry. */
+function focusIndex(entries: ExecutedNode[], nodeId: string): number {
+	const failed = entries.findIndex((e) => e.nodeId === nodeId && e.result === "failed");
+	return failed >= 0 ? failed : entries.findIndex((e) => e.nodeId === nodeId);
+}
+
 interface DebugTimelineProps {
 	entries: ExecutedNode[];
 	rfNodes: Node[];
 	onNavigateToNode: (nodeId: string) => void;
+	focus?: DebugFocus | null;
 }
 
 export function DebugTimeline({
 	entries,
 	rfNodes,
 	onNavigateToNode,
+	focus,
 }: DebugTimelineProps) {
 	// One entry's detail pane open at a time keeps the 280px panel legible.
 	const [expanded, setExpanded] = useState<number | null>(null);
@@ -197,6 +208,33 @@ export function DebugTimeline({
 	);
 
 	const rows = useMemo(() => groupEntries(entries), [entries]);
+	const listRef = useRef<HTMLOListElement>(null);
+
+	const [appliedFocus, setAppliedFocus] = useState<DebugFocus | null>(null);
+	// A fresh object per request so the effect below re-runs for a repeat click.
+	const [focusTarget, setFocusTarget] = useState<{ index: number } | null>(null);
+	if (focus && focus !== appliedFocus) {
+		setAppliedFocus(focus);
+		const index = focusIndex(entries, focus.nodeId);
+		const entry = entries[index];
+		if (entry) {
+			setExpanded(index);
+			setFocusTarget({ index });
+			if (entry.loopNodeId != null && entry.loopIndex != null) {
+				const key = `${entry.loopNodeId}:${entry.loopIndex}`;
+				setGroupOverrides((prev) => ({ ...prev, [key]: true }));
+			}
+		}
+	}
+
+	useEffect(() => {
+		if (!focusTarget) return;
+		const toggle = listRef.current?.querySelector<HTMLElement>(
+			`[data-entry-index="${focusTarget.index}"] button`
+		);
+		toggle?.focus({ preventScroll: true });
+		toggle?.scrollIntoView({ block: "nearest" });
+	}, [focusTarget]);
 
 	if (entries.length === 0) return null;
 
@@ -215,7 +253,7 @@ export function DebugTimeline({
 			entry.recordsProcessed != null;
 
 		return (
-			<li key={i}>
+			<li key={i} data-entry-index={i}>
 				<div className={cn("rounded-md", isOpen && "bg-accent/40")}>
 					<div className="flex items-center gap-1">
 						<button
@@ -308,7 +346,7 @@ export function DebugTimeline({
 	};
 
 	return (
-		<ol className="space-y-0.5">
+		<ol ref={listRef} className="space-y-0.5">
 			{rows.map((row) => {
 				if (row.kind === "entry") return renderEntry(row.index);
 

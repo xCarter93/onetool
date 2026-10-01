@@ -4,12 +4,16 @@ import { act, renderHook } from "@testing-library/react";
 import { toSavableNodes, useAutomationEditor } from "./use-automation-editor";
 import type { ActionNodeConfig, WorkflowNode } from "../lib/node-types";
 
+const queryResults = vi.hoisted(() => ({ execution: undefined as unknown }));
+const routerReplace = vi.hoisted(() => vi.fn());
+
 vi.mock("convex/react", () => ({
 	useQuery: () => undefined,
+	useQueries: () => ({ execution: queryResults.execution }),
 	useMutation: () => vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
-	useRouter: () => ({ replace: vi.fn() }),
+	useRouter: () => ({ replace: routerReplace }),
 }));
 vi.mock("@/hooks/use-toast", () => ({
 	useToast: () => ({
@@ -205,5 +209,65 @@ describe("multi-level undo/redo", () => {
 
 		act(() => result.current.handleUndo());
 		expect(result.current.nodes.map((n) => n.id)).toContain(childId);
+	});
+});
+
+describe("viewing a past run from the run param", () => {
+	const run = {
+		_id: "run1",
+		automationId: "auto1",
+		status: "failed",
+		triggeredAt: 1,
+		nodesExecuted: [{ nodeId: "gone", result: "failed", error: "Boom" }],
+	};
+
+	it("paints a run that belongs to this automation", () => {
+		queryResults.execution = run;
+		const { result } = renderHook(() => useAutomationEditor("auto1", "run1"));
+		expect(result.current.hasActiveRun).toBe(true);
+		expect(result.current.viewingPastRun).toBe(true);
+		expect(result.current.nodeResults.gone).toEqual({ status: "failed", error: "Boom" });
+	});
+
+	it("ignores a run from another automation and drops the param", () => {
+		routerReplace.mockClear();
+		queryResults.execution = { ...run, automationId: "other" };
+		const { result } = renderHook(() => useAutomationEditor("auto1", "run1"));
+		expect(result.current.hasActiveRun).toBe(false);
+		expect(result.current.viewingPastRun).toBe(false);
+		expect(routerReplace).toHaveBeenCalledWith("/automations/editor?id=auto1");
+	});
+
+	it("treats an unreadable run as not found instead of throwing", () => {
+		queryResults.execution = new Error("ArgumentValidationError");
+		const { result } = renderHook(() => useAutomationEditor("auto1", "not-an-id"));
+		expect(result.current.hasActiveRun).toBe(false);
+	});
+
+	it("keeps the run on a pane click", () => {
+		queryResults.execution = run;
+		const { result } = renderHook(() => useAutomationEditor("auto1", "run1"));
+		act(() => result.current.handlePaneClick());
+		expect(result.current.viewingPastRun).toBe(true);
+	});
+
+	it("drops the run when the run param goes away", () => {
+		queryResults.execution = run;
+		const { result, rerender } = renderHook(
+			({ runId }: { runId: string | null }) => useAutomationEditor("auto1", runId),
+			{ initialProps: { runId: "run1" as string | null } }
+		);
+		rerender({ runId: null });
+		expect(result.current.hasActiveRun).toBe(false);
+	});
+
+	it("drops the param when the viewed run is dismissed", () => {
+		routerReplace.mockClear();
+		queryResults.execution = run;
+		const { result } = renderHook(() => useAutomationEditor("auto1", "run1"));
+		expect(routerReplace).not.toHaveBeenCalled();
+		act(() => result.current.clearRun());
+		expect(result.current.hasActiveRun).toBe(false);
+		expect(routerReplace).toHaveBeenCalledWith("/automations/editor?id=auto1");
 	});
 });

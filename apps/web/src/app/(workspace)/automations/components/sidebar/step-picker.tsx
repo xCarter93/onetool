@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
 	GitBranch,
 	Play,
@@ -23,6 +23,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
+import { ACTION_META } from "../../lib/action-meta";
+import type { ActionNodeConfig } from "../../lib/node-types";
 
 const STEP_COLOR = Object.fromEntries(
 	(Object.keys(STEP_FAMILY_STYLE) as StepFamily[]).map((family) => [
@@ -186,6 +188,8 @@ export function StepPicker({
 	triggerType,
 }: StepPickerProps) {
 	const [search, setSearch] = useState("");
+	const searchRef = useRef<HTMLInputElement>(null);
+	const listRef = useRef<HTMLDivElement>(null);
 	const lowerSearch = search.toLowerCase();
 
 	// A scheduled run has no triggering record, so outside a loop there is
@@ -214,23 +218,54 @@ export function StepPicker({
 			),
 	})).filter((group) => group.items.length > 0);
 
+	const firstEnabled = filteredGroups
+		.flatMap((group) => group.items)
+		.find((item) => !item.comingSoon && !item.disabledReason);
+
+	function focusRow(offset: number) {
+		const rows = Array.from(
+			listRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []
+		);
+		const next = rows[rows.indexOf(document.activeElement as HTMLButtonElement) + offset];
+		if (next) next.focus();
+		else if (offset < 0) searchRef.current?.focus();
+	}
+
+	function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === "Enter" && firstEnabled) {
+			e.preventDefault();
+			onSelect(firstEnabled.type, firstEnabled.actionType);
+		} else if (e.key === "ArrowDown") {
+			e.preventDefault();
+			focusRow(1);
+		}
+	}
+
+	function handleListKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+		if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+		e.preventDefault();
+		focusRow(e.key === "ArrowDown" ? 1 : -1);
+	}
+
 	return (
 		<div className="space-y-4">
 			{/* Search */}
 			<div className="relative">
 				<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 				<Input
+					ref={searchRef}
 					type="search"
 					placeholder="Search steps..."
 					aria-label="Search steps"
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
+					onKeyDown={handleSearchKeyDown}
 					className="pl-8"
 				/>
 			</div>
 
 			{/* Grouped list */}
-			<div className="space-y-6">
+			<div ref={listRef} className="space-y-6" onKeyDown={handleListKeyDown}>
 				{filteredGroups.map((group) => (
 					<div key={group.label}>
 						<div className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -241,6 +276,11 @@ export function StepPicker({
 								const Icon = item.icon;
 								const disabled =
 									item.comingSoon || Boolean(item.disabledReason);
+								const description =
+									item.disabledReason ??
+									(item.actionType
+										? ACTION_META[item.actionType as ActionNodeConfig["action"]["type"]]?.description
+										: undefined);
 								return (
 									<button
 										key={`${item.type}-${item.actionType ?? ""}-${item.label}`}
@@ -263,11 +303,11 @@ export function StepPicker({
 										>
 											<Icon className="h-4 w-4" />
 										</div>
-										<span className="text-sm flex-1">
+										<span className="min-w-0 flex-1 text-sm">
 											{item.label}
-											{item.disabledReason && (
-												<span className="block text-xs text-muted-foreground">
-													{item.disabledReason}
+											{description && (
+												<span className="block truncate text-xs text-muted-foreground">
+													{description}
 												</span>
 											)}
 										</span>
