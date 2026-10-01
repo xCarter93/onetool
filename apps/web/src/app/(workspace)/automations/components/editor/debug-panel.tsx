@@ -66,9 +66,11 @@ const OBJECT_LABEL: Record<string, string> = {
 /** Overall run status line — a failure is never conveyed by color alone. */
 function StatusLine({
 	execution,
+	rfNodes,
 	onNavigateToNode,
 }: {
 	execution: ExecutionDoc;
+	rfNodes: Node[];
 	onNavigateToNode: (nodeId: string) => void;
 }) {
 	if (!execution) return null;
@@ -76,17 +78,24 @@ function StatusLine({
 	const failedIndex = execution.nodesExecuted.findIndex(
 		(entry) => entry.result === "failed"
 	);
+	const failedNodeId = failedIndex >= 0 ? execution.nodesExecuted[failedIndex].nodeId : null;
+	// A past run's failed step may have been removed since.
+	const canJump = failedNodeId !== null && rfNodes.some((n) => n.id === failedNodeId);
 	const failedText: ReactNode =
-		failedIndex >= 0 ? (
+		failedNodeId !== null ? (
 			<>
-				<Button
-					variant="link"
-					size="sm"
-					className="h-auto p-0 text-xs text-inherit underline"
-					onClick={() => onNavigateToNode(execution.nodesExecuted[failedIndex].nodeId)}
-				>
-					Failed at step {failedIndex + 1}
-				</Button>
+				{canJump ? (
+					<Button
+						variant="link"
+						size="sm"
+						className="h-auto p-0 text-xs text-inherit underline"
+						onClick={() => onNavigateToNode(failedNodeId)}
+					>
+						Failed at step {failedIndex + 1}
+					</Button>
+				) : (
+					`Failed at step ${failedIndex + 1}`
+				)}
 				{execution.error ? `: ${execution.error}` : ""}
 			</>
 		) : execution.error ? (
@@ -361,7 +370,7 @@ export function DebugPanel({
 			</div>
 
 			{hasActiveRun && (
-				<StatusLine execution={execution} onNavigateToNode={onNavigateToNode} />
+				<StatusLine execution={execution} rfNodes={rfNodes} onNavigateToNode={onNavigateToNode} />
 			)}
 
 			{hasActiveRun && execution && execution.status !== "running" && (

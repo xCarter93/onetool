@@ -244,6 +244,23 @@ describe("viewing a past run from the run param", () => {
 		expect(result.current.hasActiveRun).toBe(false);
 	});
 
+	it("keeps the run on a pane click", () => {
+		queryResults.execution = run;
+		const { result } = renderHook(() => useAutomationEditor("auto1", "run1"));
+		act(() => result.current.handlePaneClick());
+		expect(result.current.viewingPastRun).toBe(true);
+	});
+
+	it("drops the run when the run param goes away", () => {
+		queryResults.execution = run;
+		const { result, rerender } = renderHook(
+			({ runId }: { runId: string | null }) => useAutomationEditor("auto1", runId),
+			{ initialProps: { runId: "run1" as string | null } }
+		);
+		rerender({ runId: null });
+		expect(result.current.hasActiveRun).toBe(false);
+	});
+
 	it("drops the param when the viewed run is dismissed", () => {
 		routerReplace.mockClear();
 		queryResults.execution = run;

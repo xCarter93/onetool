@@ -399,6 +399,7 @@ export function useAutomationEditor(automationId: string | null, runId: string |
 	if (runId !== prevRunId) {
 		setPrevRunId(runId);
 		if (runId) setActiveExecutionId(runId as Id<"workflowExecutions">);
+		else if (activeExecutionId === prevRunId) setActiveExecutionId(null);
 	}
 	const [hasInitialized, setHasInitialized] = useState(false);
 	const [undoBanner, setUndoBanner] = useState<UndoBannerState | null>(null);
@@ -459,15 +460,19 @@ export function useAutomationEditor(automationId: string | null, runId: string |
 		};
 	}, []);
 
-	const clearUndoState = useCallback(() => {
+	const dismissUndoBanner = useCallback(() => {
 		setUndoBanner(null);
-		// Editing invalidates any run currently painted on the canvas.
-		setActiveExecutionId(null);
 		if (undoTimeoutRef.current) {
 			clearTimeout(undoTimeoutRef.current);
 			undoTimeoutRef.current = null;
 		}
 	}, []);
+
+	const clearUndoState = useCallback(() => {
+		dismissUndoBanner();
+		// Editing invalidates any run currently painted on the canvas.
+		setActiveExecutionId(null);
+	}, [dismissUndoBanner]);
 
 	// Keep the snapshot mirror current after every render (incl. load-init
 	// above). pushHistory only runs from event handlers, which fire post-commit.
@@ -921,9 +926,7 @@ export function useAutomationEditor(automationId: string | null, runId: string |
 		setShowClearConfirm(false);
 	}, []);
 
-	const handlePaneClick = useCallback(() => {
-		clearUndoState();
-	}, [clearUndoState]);
+	const handlePaneClick = dismissUndoBanner;
 
 	// Positions are fully derived inside automationToReactFlow (derived-layout.ts)
 	const layoutedNodes = rawFlow.nodes;

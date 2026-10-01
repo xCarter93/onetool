@@ -26,6 +26,15 @@ describe("computeNodeStatuses", () => {
 		expect(statuses).toEqual({ a: "success", b: "skipped" });
 	});
 
+	it("marks a loop failed when any of its items failed", () => {
+		const statuses = computeNodeStatuses({
+			status: "completed_with_errors",
+			nodesExecuted: [{ nodeId: "L", result: "success" }],
+			loopSummary: [{ nodeId: "L", total: 3, succeeded: 2, failed: 1, skipped: 0 }],
+		});
+		expect(statuses.L).toBe("failed");
+	});
+
 	it("marks the current node running while the run is in progress", () => {
 		const statuses = computeNodeStatuses({
 			status: "running",

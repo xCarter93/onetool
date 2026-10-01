@@ -75,6 +75,13 @@ export function computeNodeStatuses(
 		);
 	}
 
+	// Loops log "success" before their items run; failed items make the loop failed.
+	for (const tally of execution.loopSummary ?? []) {
+		if (tally.failed > 0 && statuses[tally.nodeId] === "success") {
+			statuses[tally.nodeId] = "failed";
+		}
+	}
+
 	// The node about to run (or running) hasn't logged its final result yet.
 	if (execution.status === "running" && execution.currentNodeId) {
 		statuses[execution.currentNodeId] = "running";

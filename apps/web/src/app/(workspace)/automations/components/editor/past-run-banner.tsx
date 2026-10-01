@@ -32,7 +32,7 @@ export function PastRunBanner({ execution, outdated, onClose }: PastRunBannerPro
 				className="pointer-events-auto w-full max-w-md rounded-lg border border-border bg-popover shadow-floating"
 			>
 				<FramePanel className="overflow-hidden p-0!">
-					<Alert className="border-0 shadow-none">
+					<Alert role="status" className="border-0 shadow-none">
 						<History />
 						<AlertTitle className="flex flex-wrap items-center gap-2">
 							{execution.mode === "test" ? "Viewing a test run" : "Viewing a past run"}
