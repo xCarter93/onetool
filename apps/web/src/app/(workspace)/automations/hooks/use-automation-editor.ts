@@ -43,6 +43,7 @@ import {
 	getValidationWarningMessage,
 	validateWorkflowForSave,
 } from "../lib/validation";
+import { isDuplicableStep } from "../lib/duplicable";
 import { definitionSignature } from "../lib/editor-signature";
 import { computeLiveTraversalStatuses, computeNodeStatuses } from "../lib/run-status";
 import { getScopeObjectType } from "../lib/variables";
@@ -859,14 +860,7 @@ export function useAutomationEditor(automationId: string | null) {
 	const handleDuplicateNode = useCallback(
 		(nodeId: string): string | null => {
 			const source = nodes.find((node) => node.id === nodeId);
-			if (
-				!source ||
-				source.type === "placeholder" ||
-				source.type === "condition" ||
-				source.type === "loop" ||
-				source.type === "end" ||
-				source.type === "next_item"
-			) {
+			if (!source || !isDuplicableStep(source.type)) {
 				return null;
 			}
 			setActiveExecutionId(null);

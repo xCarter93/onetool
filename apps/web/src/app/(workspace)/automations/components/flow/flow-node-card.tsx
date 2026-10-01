@@ -19,6 +19,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
+import { NOT_DUPLICABLE_REASON } from "../../lib/duplicable";
 import { RUN_STATUS_META, type NodeRunStatus } from "../../lib/run-status";
 import { useNodeActions } from "./node-actions-context";
 import { useRunStatuses } from "./run-status-context";
@@ -40,8 +41,6 @@ interface FlowNodeCardProps {
 	ariaLabel: string;
 	className?: string;
 }
-
-const NOT_DUPLICABLE = "Branching steps can't be duplicated yet";
 
 // The slot stays reserved for the whole run so the header never shifts as steps
 // change state; the glyph inherits the band color and the wrapper ring carries tone.
@@ -113,7 +112,7 @@ export function FlowNodeCard({
 								onClick={() => actions.onDuplicate?.(nodeId)}
 							>
 								<Copy />
-								{duplicable ? "Duplicate" : NOT_DUPLICABLE}
+								{duplicable ? "Duplicate" : NOT_DUPLICABLE_REASON}
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								variant="destructive"
@@ -159,7 +158,7 @@ export function FlowNodeCard({
 					onClick={() => actions.onDuplicate?.(nodeId)}
 				>
 					<Copy />
-					{duplicable ? "Duplicate" : NOT_DUPLICABLE}
+					{duplicable ? "Duplicate" : NOT_DUPLICABLE_REASON}
 				</ContextMenuItem>
 				<ContextMenuItem
 					variant="destructive"

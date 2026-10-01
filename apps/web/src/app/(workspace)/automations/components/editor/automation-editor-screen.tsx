@@ -368,6 +368,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						trigger={editor.trigger}
 						nodes={editor.nodes}
 						formulas={editor.formulas}
+						nodeWarnings={nodeWarnings}
 						onClose={sidebar.closeSidebar}
 						onTriggerTypeSelect={handleTriggerTypeSelect}
 						onStepTypeSelect={handleStepTypeSelect}
@@ -375,9 +376,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						onNodeChange={editor.handleNodeChange}
 						onDeleteNode={handleDeleteNode}
 						onDeleteTrigger={handleDeleteTrigger}
-						onNavigateToNode={handleNavigateToNode}
-						rfNodes={editor.layoutedNodes}
-						rfEdges={editor.layoutedEdges}
+						onDuplicateNode={handleDuplicateNode}
 					/>
 				</div>
 			</div>
