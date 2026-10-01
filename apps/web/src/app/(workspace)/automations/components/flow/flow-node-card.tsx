@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Copy, EllipsisVertical, Trash2, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeHeaderTitle } from "@/components/base-node";
@@ -20,9 +20,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
 import { NOT_DUPLICABLE_REASON } from "../../lib/duplicable";
-import { RUN_STATUS_META, type NodeRunStatus } from "../../lib/run-status";
+import {
+	RUN_STATUS_META,
+	nodeResultFacts,
+	type NodeRunResult,
+	type NodeRunStatus,
+} from "../../lib/run-status";
 import { useNodeActions } from "./node-actions-context";
-import { useRunStatuses } from "./run-status-context";
+import { useCanvasRun } from "./run-status-context";
 
 interface FlowNodeCardProps {
 	nodeId: string;
@@ -59,6 +64,32 @@ function RunStatusIcon({ status }: { status: NodeRunStatus | undefined }) {
 	);
 }
 
+const FOOTER = "flex items-center gap-1.5 border-t border-border px-3 py-1.5 text-xs";
+
+function RunResultLine({ result }: { result: NodeRunResult }) {
+	if (result.status === "failed") {
+		const error = result.error ?? "This step failed";
+		return (
+			<div className={cn(FOOTER, "text-destructive")} title={error}>
+				<span className="truncate">{error}</span>
+			</div>
+		);
+	}
+	if (result.status !== "success") return null;
+	const facts = nodeResultFacts(result);
+	if (facts.length === 0) return null;
+	return (
+		<div className={cn(FOOTER, "tabular-nums text-muted-foreground")}>
+			{facts.map((fact, i) => (
+				<Fragment key={fact}>
+					{i > 0 && <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground/40" />}
+					<span className="truncate">{fact}</span>
+				</Fragment>
+			))}
+		</div>
+	);
+}
+
 export function FlowNodeCard({
 	nodeId,
 	family,
@@ -75,8 +106,10 @@ export function FlowNodeCard({
 	const { band } = STEP_FAMILY_STYLE[family];
 	const actions = useNodeActions();
 	const showMenu = menu && (actions.onDuplicate || actions.onDelete);
-	const runStatuses = useRunStatuses();
-	const runStatus = runStatuses?.[nodeId];
+	const run = useCanvasRun();
+	const runStatus = run?.statuses[nodeId];
+	// Held until the run finishes: footers growing mid-stream would reflow the graph.
+	const runResult = run && !run.live ? run.results[nodeId] : undefined;
 	const runLabel = runStatus && runStatus !== "idle" ? RUN_STATUS_META[runStatus].label : null;
 
 	const card = (
@@ -90,7 +123,7 @@ export function FlowNodeCard({
 			>
 				<Icon className="h-4 w-4 shrink-0" aria-hidden />
 				<BaseNodeHeaderTitle className="truncate text-sm">{title}</BaseNodeHeaderTitle>
-				{runStatuses && <RunStatusIcon status={runStatus} />}
+				{run && <RunStatusIcon status={runStatus} />}
 				{showMenu && (
 					<DropdownMenu>
 						<DropdownMenuTrigger
@@ -127,6 +160,7 @@ export function FlowNodeCard({
 				)}
 			</header>
 			<p className="px-3 py-2.5 text-sm leading-5 text-muted-foreground">{children}</p>
+			{!warning && runResult && <RunResultLine result={runResult} />}
 			{warning && (
 				<>
 					<div

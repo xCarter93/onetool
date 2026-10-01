@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 function AutomationEditorWithSuspense() {
 	const searchParams = useSearchParams();
 	const automationId = searchParams.get("id");
+	const runId = searchParams.get("run");
 
 	return (
 		<Suspense
@@ -25,7 +26,7 @@ function AutomationEditorWithSuspense() {
 				</main>
 			}
 		>
-			<AutomationEditorScreen automationId={automationId} />
+			<AutomationEditorScreen automationId={automationId} runId={runId} />
 		</Suspense>
 	);
 }

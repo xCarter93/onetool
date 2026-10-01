@@ -1,9 +1,16 @@
 import { createContext, useContext } from "react";
-import type { NodeRunStatus } from "../../lib/run-status";
+import type { NodeRunResult, NodeRunStatus } from "../../lib/run-status";
 
-/** Per-node statuses of the run shown on the canvas; null when there is no run. */
-export const RunStatusContext = createContext<Record<string, NodeRunStatus> | null>(null);
+export type CanvasRun = {
+	statuses: Record<string, NodeRunStatus>;
+	results: Record<string, NodeRunResult>;
+	/** True while the run is still executing. */
+	live: boolean;
+};
 
-export function useRunStatuses(): Record<string, NodeRunStatus> | null {
+/** The run shown on the canvas; null when there is no run. */
+export const RunStatusContext = createContext<CanvasRun | null>(null);
+
+export function useCanvasRun(): CanvasRun | null {
 	return useContext(RunStatusContext);
 }

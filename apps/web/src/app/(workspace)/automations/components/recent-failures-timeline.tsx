@@ -76,7 +76,7 @@ export function RecentFailuresTimeline({ className }: { className?: string }) {
 												type="button"
 												onClick={() =>
 													router.push(
-														`/automations/editor?id=${failure.automationId}`
+														`/automations/editor?id=${failure.automationId}&run=${failure.executionId}`
 													)
 												}
 												className="cursor-pointer hover:text-primary hover:underline"

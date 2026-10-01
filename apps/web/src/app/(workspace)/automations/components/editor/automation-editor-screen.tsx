@@ -6,7 +6,9 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { AutomationFlow, useCanvasReserve } from "../flow/automation-flow";
 import { FlowZoomControls } from "../flow/flow-zoom-controls";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
-import { WorkflowDrawer } from "./workflow-drawer";
+import { WorkflowDrawer, type DrawerTab } from "./workflow-drawer";
+import type { DebugFocus } from "./debug-timeline";
+import { PastRunBanner } from "./past-run-banner";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
 import {
 	useKeyboardShortcuts,
@@ -64,13 +66,21 @@ function EditorKeyboardShortcuts(props: KeyboardShortcutOptions) {
 	return null;
 }
 
-export function AutomationEditorScreen({ automationId }: { automationId: string | null }) {
+export function AutomationEditorScreen({
+	automationId,
+	runId,
+}: {
+	automationId: string | null;
+	runId: string | null;
+}) {
 	const router = useRouter();
-	const editor = useAutomationEditor(automationId);
+	const editor = useAutomationEditor(automationId, runId);
 	const { allows } = useEntitlements();
 	const canPublish = allows("automationPublish");
 	const sidebar = useSidebarState();
 	const [drawerOpen, setDrawerOpen] = useState(true);
+	const [drawerTab, setDrawerTab] = useState<DrawerTab>(runId ? "debug" : "resources");
+	const [debugFocus, setDebugFocus] = useState<DebugFocus | null>(null);
 	const canvasReserve = useCanvasReserve(drawerOpen, sidebar.isOpen);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
 	// The count re-keys the text so a repeated message is announced again.
@@ -86,6 +96,18 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	const handleNavigateToNode = useCallback((nodeId: string) => {
 		navigateFnRef.current?.(nodeId);
+	}, []);
+
+	const handleViewInDebug = useCallback((nodeId: string) => {
+		setDrawerOpen(true);
+		setDrawerTab("debug");
+		setDebugFocus({ nodeId });
+	}, []);
+
+	// A stale focus would re-open its entry whenever the timeline remounts.
+	const handleDrawerTabChange = useCallback((tab: DrawerTab) => {
+		setDrawerTab(tab);
+		setDebugFocus(null);
 	}, []);
 
 	// Auto-open trigger picker for new/empty automations
@@ -274,6 +296,14 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		announce("Redone");
 	}, [announce, editor]);
 
+	const canvasRun = useMemo(
+		() =>
+			editor.hasActiveRun
+				? { statuses: editor.runStatuses, results: editor.nodeResults, live: isLiveRun }
+				: null,
+		[editor.hasActiveRun, editor.runStatuses, editor.nodeResults, isLiveRun]
+	);
+
 	const selectedNode = useMemo(() => {
 		if (sidebar.mode?.mode === "node-config") {
 			return sidebar.mode.nodeType === "trigger"
@@ -337,7 +367,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 			canUndo={editor.canUndo}
 			canRedo={editor.canRedo}
 		/>
-		<RunStatusContext.Provider value={editor.hasActiveRun ? editor.runStatuses : null}>
+		<RunStatusContext.Provider value={canvasRun}>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
 				automationId={editor.automation?._id ?? null}
@@ -380,19 +410,32 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						rfNodes={editor.layoutedNodes}
 						onNavigateToNode={handleNavigateToNode}
 						open={drawerOpen}
-						onToggle={() => setDrawerOpen((o) => !o)}
+						onToggle={() => {
+							setDrawerOpen((o) => !o);
+							setDebugFocus(null);
+						}}
+						tab={drawerTab}
+						onTabChange={handleDrawerTabChange}
+						debugFocus={debugFocus}
 						formulas={editor.formulas}
 						onFormulasChange={editor.onFormulasChange}
 						formulaWarnings={formulaWarnings}
 						sampleRecords={editor.sampleRecords}
 						execution={editor.execution}
-						isRunning={editor.isRunning}
+						// Stop cancels test runs only; a viewed production run can't be stopped here.
+						isRunning={editor.isRunning && editor.execution?.dryRun === true}
 						isStartingTest={editor.isStartingTest}
 						hasActiveRun={editor.hasActiveRun}
 						onStartTest={editor.handleStartTest}
 						onCancelTest={editor.handleCancelTest}
 					/>
-					{editor.needsPublish && (
+					{editor.viewingPastRun && editor.execution ? (
+						<PastRunBanner
+							execution={editor.execution}
+							outdated={editor.runOutdated}
+							onClose={editor.clearRun}
+						/>
+					) : editor.needsPublish && (
 						<UnpublishedBanner
 							isPublished={editor.isPublished}
 							publishLabel={editor.publishLabel}
@@ -412,6 +455,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						nodes={editor.nodes}
 						formulas={editor.formulas}
 						nodeWarnings={nodeWarnings}
+						runResults={editor.hasActiveRun ? editor.nodeResults : null}
+						onViewInDebug={handleViewInDebug}
 						onClose={sidebar.closeSidebar}
 						onTriggerTypeSelect={handleTriggerTypeSelect}
 						onStepTypeSelect={handleStepTypeSelect}

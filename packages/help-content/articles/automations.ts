@@ -363,7 +363,7 @@ export const automationsArticles: HelpArticle[] = [
 						type: "steps",
 						items: [
 							"Open the automation in the editor.",
-							"Open the **Debug** tab in the drawer on the right.",
+							"Open the **Debug** tab in the drawer on the left.",
 							"Pick a sample record to run against if you want a specific one.",
 							"Click **Run test**.",
 						],
@@ -403,7 +403,7 @@ export const automationsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "The **Runs** tab on the Automations page lists every individual run across all of your automations. Filter the list by status with the status dropdown, and click an automation's name to jump into its editor.",
+						text: "The **Runs** tab on the Automations page lists every individual run across all of your automations. Filter the list by status with the status dropdown. Click an automation's name to open the editor with that run shown on the canvas.",
 					},
 					{
 						type: "paragraph",
@@ -426,7 +426,15 @@ export const automationsArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "To dig into the details, open the automation in the editor and use the **Debug** tab, the same place you run tests.",
+						text: "Click an automation's name in the **Runs** tab or under recent failures and the editor opens with that run on the canvas. Each step shows whether it succeeded, failed, or was skipped. A failed step shows its error at the bottom of its card. A step that succeeded shows how long it took and how many records it processed, and a loop shows how many items succeeded and failed. If a step also has a setup problem, its card shows that warning instead.",
+					},
+					{
+						type: "paragraph",
+						text: "Click a step to see its **Last run** details at the top of the settings panel: status, duration, records processed, and the error if it failed. **View in debug panel** opens that step in the **Debug** tab so you can read its input and output.",
+					},
+					{
+						type: "paragraph",
+						text: "A note at the top of the canvas shows when the run started. If the automation changed after that run, the note says some steps may not match what ran. Close the note, start a new test, or edit anything to go back to the plain editor.",
 					},
 				],
 			},

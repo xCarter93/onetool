@@ -73,7 +73,7 @@ export function RunsTable() {
 						type="button"
 						onClick={() =>
 							router.push(
-								`/automations/editor?id=${row.original.automationId}`
+								`/automations/editor?id=${row.original.automationId}&run=${row.original._id}`
 							)
 						}
 						className="flex flex-col items-start text-left cursor-pointer"

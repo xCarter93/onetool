@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
 	computeLiveTraversalStatuses,
+	computeNodeResults,
 	computeNodeStatuses,
+	nodeResultFacts,
 	runEdgeClass,
 	RUN_STATUS_META,
 	runStatusRingClass,
@@ -175,5 +177,66 @@ describe("runEdgeClass", () => {
 		expect(runEdgeClass(undefined, "failed")).toBe("");
 		expect(runEdgeClass(undefined, "skipped")).toBe("");
 		expect(runEdgeClass("skipped", "running")).toBe("");
+	});
+});
+
+describe("computeNodeResults", () => {
+	it("returns an empty map for no execution", () => {
+		expect(computeNodeResults(null)).toEqual({});
+	});
+
+	it("reports duration, records, and errors for top-level steps", () => {
+		const results = computeNodeResults({
+			status: "failed",
+			nodesExecuted: [
+				{ nodeId: "a", result: "success", startedAt: 1000, completedAt: 2200, recordsProcessed: 12 },
+				{ nodeId: "b", result: "failed", error: "Record not found" },
+			],
+		});
+		expect(results.a).toEqual({ status: "success", durationMs: 1200, recordsProcessed: 12 });
+		expect(results.b).toEqual({ status: "failed", error: "Record not found" });
+	});
+
+	it("keeps a loop body step's first failure and drops per-iteration numbers", () => {
+		const results = computeNodeResults({
+			status: "completed_with_errors",
+			nodesExecuted: [
+				{ nodeId: "body", result: "success", loopNodeId: "L", loopIndex: 0, startedAt: 0, completedAt: 5 },
+				{ nodeId: "body", result: "failed", error: "first", loopNodeId: "L", loopIndex: 1 },
+				{ nodeId: "body", result: "failed", error: "second", loopNodeId: "L", loopIndex: 2 },
+			],
+		});
+		expect(results.body).toEqual({ status: "failed", error: "first" });
+	});
+
+	it("uses the loop summary tally for loop nodes", () => {
+		const results = computeNodeResults({
+			status: "completed_with_errors",
+			nodesExecuted: [{ nodeId: "L", result: "success" }],
+			loopSummary: [{ nodeId: "L", total: 14, succeeded: 12, failed: 2, skipped: 0 }],
+		});
+		expect(results.L.loop).toEqual({ total: 14, succeeded: 12, failed: 2, skipped: 0 });
+		expect(nodeResultFacts(results.L)).toEqual(["12 of 14 items", "2 failed"]);
+	});
+
+	it("keeps results for node ids the canvas no longer has", () => {
+		const results = computeNodeResults({
+			status: "completed",
+			nodesExecuted: [{ nodeId: "gone", result: "success" }],
+		});
+		expect(results.gone.status).toBe("success");
+	});
+});
+
+describe("nodeResultFacts", () => {
+	it("formats duration and record count", () => {
+		expect(nodeResultFacts({ status: "success", durationMs: 1200, recordsProcessed: 1 })).toEqual([
+			"1.2s",
+			"1 record",
+		]);
+	});
+
+	it("is empty when nothing was measured", () => {
+		expect(nodeResultFacts({ status: "success" })).toEqual([]);
 	});
 });

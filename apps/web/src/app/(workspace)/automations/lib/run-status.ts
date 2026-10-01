@@ -1,4 +1,5 @@
 import { Check, Minus, X, type LucideIcon } from "lucide-react";
+import { formatDuration } from "./run-format";
 
 /**
  * Per-node run status derived from a live workflow execution, used to paint
@@ -16,6 +17,10 @@ export type NodeRunStatus =
 type ExecutedEntry = {
 	nodeId: string;
 	result: "success" | "skipped" | "failed" | "running";
+	error?: string;
+	startedAt?: number;
+	completedAt?: number;
+	recordsProcessed?: number;
 	// Present on entries logged from inside a loop body.
 	loopNodeId?: string;
 	loopIndex?: number;
@@ -31,6 +36,14 @@ type ExecutionLike = {
 		| "cancelled";
 	currentNodeId?: string;
 	nodesExecuted: ExecutedEntry[];
+	loopSummary?: (LoopTally & { nodeId: string })[];
+};
+
+export type LoopTally = {
+	total: number;
+	succeeded: number;
+	failed: number;
+	skipped: number;
 };
 
 // Loops revisit body nodes, so a node can have several entries — a failure
@@ -132,6 +145,76 @@ export function runEdgeClass(
 }
 
 type ActiveRunStatus = Exclude<NodeRunStatus, "idle">;
+
+/** What one step did in a run, for the card footer and the inspector. */
+export type NodeRunResult = {
+	status: ActiveRunStatus;
+	error?: string;
+	durationMs?: number;
+	recordsProcessed?: number;
+	loop?: LoopTally;
+};
+
+/**
+ * Per-node result of a run. A step revisited by a loop reports its first
+ * failure, and no duration or count — one iteration's numbers would misstate
+ * the step. Loop nodes carry their loopSummary tally, which (unlike the
+ * truncated log) is authoritative.
+ */
+export function computeNodeResults(
+	execution: ExecutionLike | null | undefined
+): Record<string, NodeRunResult> {
+	const results: Record<string, NodeRunResult> = {};
+	if (!execution) return results;
+
+	const picked = new Map<string, ExecutedEntry>();
+	for (const entry of execution.nodesExecuted) {
+		if (picked.get(entry.nodeId)?.result === "failed") continue;
+		picked.set(entry.nodeId, entry);
+	}
+
+	for (const [nodeId, status] of Object.entries(computeNodeStatuses(execution))) {
+		if (status === "idle") continue;
+		const entry = picked.get(nodeId);
+		const tally = execution.loopSummary?.find((s) => s.nodeId === nodeId);
+		const result: NodeRunResult = { status };
+		if (entry?.result === "failed" && entry.error) result.error = entry.error;
+		if (entry && entry.loopNodeId === undefined) {
+			if (entry.startedAt !== undefined && entry.completedAt !== undefined) {
+				result.durationMs = entry.completedAt - entry.startedAt;
+			}
+			if (entry.recordsProcessed !== undefined) {
+				result.recordsProcessed = entry.recordsProcessed;
+			}
+		}
+		if (tally) {
+			const { total, succeeded, failed, skipped } = tally;
+			result.loop = { total, succeeded, failed, skipped };
+		}
+		results[nodeId] = result;
+	}
+	return results;
+}
+
+function plural(n: number, word: string): string {
+	return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/** Short muted facts for a step that ran, e.g. ["1.2s", "12 records"]. */
+export function nodeResultFacts(result: NodeRunResult): string[] {
+	if (result.loop) {
+		const { total, succeeded, failed } = result.loop;
+		const facts = [`${succeeded.toLocaleString()} of ${plural(total, "item")}`];
+		if (failed > 0) facts.push(`${failed.toLocaleString()} failed`);
+		return facts;
+	}
+	const facts: string[] = [];
+	if (result.durationMs !== undefined) facts.push(formatDuration(result.durationMs));
+	if (result.recordsProcessed !== undefined) {
+		facts.push(plural(result.recordsProcessed, "record"));
+	}
+	return facts;
+}
 
 const RING = "ring-2 ring-offset-2 ring-offset-background";
 

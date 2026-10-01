@@ -24,6 +24,9 @@ import {
 import type { RunRecordRef } from "../../hooks/use-automation-editor";
 import { FormulaEditorModal, type SampleRecord } from "./formula-editor-modal";
 import { DebugPanel } from "./debug-panel";
+import type { DebugFocus } from "./debug-timeline";
+
+export type DrawerTab = "resources" | "debug";
 
 interface WorkflowDrawerProps {
 	trigger: TriggerConfig | null | undefined;
@@ -32,6 +35,10 @@ interface WorkflowDrawerProps {
 	onNavigateToNode: (nodeId: string) => void;
 	open: boolean;
 	onToggle: () => void;
+	tab: DrawerTab;
+	onTabChange: (tab: DrawerTab) => void;
+	/** Step whose Debug timeline entry should open. */
+	debugFocus: DebugFocus | null;
 	formulas: FormulaResource[];
 	onFormulasChange: (next: FormulaResource[]) => void;
 	/** Save-blocking problems keyed by formula id, from validateWorkflowForSave. */
@@ -105,6 +112,9 @@ export function WorkflowDrawer({
 	onNavigateToNode,
 	open,
 	onToggle,
+	tab,
+	onTabChange,
+	debugFocus,
 	formulas,
 	onFormulasChange,
 	formulaWarnings,
@@ -281,7 +291,8 @@ export function WorkflowDrawer({
 			</div>
 
 			<PillTabs
-				defaultValue="resources"
+				value={tab}
+				onValueChange={(value) => onTabChange(value as DrawerTab)}
 				className="flex min-h-0 flex-1 flex-col gap-0"
 			>
 				<div className="border-b border-border px-3 py-2">
@@ -361,6 +372,7 @@ export function WorkflowDrawer({
 						onCancel={onCancelTest}
 						rfNodes={rfNodes}
 						onNavigateToNode={onNavigateToNode}
+						focus={debugFocus}
 					/>
 				</PillTabsContent>
 			</PillTabs>

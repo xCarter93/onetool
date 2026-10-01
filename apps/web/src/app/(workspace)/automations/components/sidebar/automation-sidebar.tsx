@@ -27,6 +27,7 @@ import {
 import { NOT_DUPLICABLE_REASON, isDuplicableStep } from "../../lib/duplicable";
 import { getScopeObjectType } from "../../lib/variables";
 import { STEP_FAMILY_STYLE, stepIdentity, type StepIdentity } from "../../lib/step-family";
+import type { NodeRunResult } from "../../lib/run-status";
 import { TriggerPicker } from "./trigger-picker";
 import { StepPicker } from "./step-picker";
 import { TriggerConfigPanel } from "./panels/trigger-config";
@@ -37,6 +38,7 @@ import { LoopConfigPanel } from "./panels/loop-config";
 import { AggregateConfigPanel } from "./panels/aggregate-config";
 import { AdjustTimeConfigPanel } from "./panels/adjust-time-config";
 import { DelayConfig, DelayUntilConfig } from "./panels/delay-config";
+import { StepLastRun } from "./panels/step-last-run";
 
 export type SidebarMode =
 	| { mode: "trigger-picker" }
@@ -122,6 +124,9 @@ interface AutomationSidebarProps {
 	formulas?: FormulaResource[];
 	/** First save-blocking problem per node id, the same text the canvas card shows. */
 	nodeWarnings: Map<string, string>;
+	/** Per-step results of the run on the canvas; null when there is none. */
+	runResults: Record<string, NodeRunResult> | null;
+	onViewInDebug: (nodeId: string) => void;
 	onClose: () => void;
 	onTriggerTypeSelect: (triggerType: string) => void;
 	onStepTypeSelect: (
@@ -143,6 +148,8 @@ export function AutomationSidebar({
 	nodes,
 	formulas = [],
 	nodeWarnings,
+	runResults,
+	onViewInDebug,
 	onClose,
 	onTriggerTypeSelect,
 	onStepTypeSelect,
@@ -203,10 +210,14 @@ export function AutomationSidebar({
 	const title = activeMode ? panelTitle(activeMode, identity, trigger !== null) : "";
 	const family = identity ? STEP_FAMILY_STYLE[identity.family] : null;
 	const Icon = identity?.icon;
-	const warning =
+	const configNodeId =
 		activeMode?.mode === "node-config"
-			? nodeWarnings.get(activeMode.nodeType === "trigger" ? TRIGGER_NODE_ID : activeMode.nodeId)
-			: undefined;
+			? activeMode.nodeType === "trigger"
+				? TRIGGER_NODE_ID
+				: activeMode.nodeId
+			: null;
+	const warning = configNodeId ? nodeWarnings.get(configNodeId) : undefined;
+	const lastRun = configNodeId ? runResults?.[configNodeId] : undefined;
 
 	const configProps: ConfigPanelProps = {
 		trigger,
@@ -334,6 +345,16 @@ export function AutomationSidebar({
 						<TriangleAlert aria-hidden />
 						<AlertDescription>{warning}</AlertDescription>
 					</Alert>
+				)}
+				{hasTarget && lastRun && configNodeId && (
+					<StepLastRun
+						result={lastRun}
+						onViewInDebug={() => {
+							onViewInDebug(configNodeId);
+							// The sheet would cover the drawer.
+							if (belowLg) onClose();
+						}}
+					/>
 				)}
 				{hasTarget && renderContent(activeMode)}
 			</div>

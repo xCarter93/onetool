@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { RunRecordRef } from "../../hooks/use-automation-editor";
-import { DebugTimeline } from "./debug-timeline";
+import { DebugTimeline, type DebugFocus } from "./debug-timeline";
 import { summarizeLoopFailures, type RunStatus } from "../../lib/run-format";
 import type { TriggerableObjectType } from "../../lib/node-types";
 
@@ -52,6 +52,7 @@ interface DebugPanelProps {
 	onCancel: () => void;
 	rfNodes: Node[];
 	onNavigateToNode: (nodeId: string) => void;
+	focus?: DebugFocus | null;
 }
 
 const OBJECT_LABEL: Record<string, string> = {
@@ -90,8 +91,10 @@ function StatusLine({
 			</>
 		) : execution.error ? (
 			`Failed: ${execution.error}`
-		) : (
+		) : execution.dryRun ? (
 			"Test failed"
+		) : (
+			"Failed"
 		);
 
 	const { total: loopTotal, failed: loopFailed } = summarizeLoopFailures(
@@ -124,7 +127,7 @@ function StatusLine({
 			icon: (
 				<CheckCircle2 className="size-4 text-success-foreground" />
 			),
-			text: "Test completed",
+			text: isDry ? "Test completed" : "Completed",
 			cls: "text-success-foreground",
 		},
 		completed_with_errors: {
@@ -146,7 +149,7 @@ function StatusLine({
 		},
 		cancelled: {
 			icon: <CircleSlash className="size-4 text-muted-foreground" />,
-			text: "Test cancelled",
+			text: isDry ? "Test cancelled" : "Cancelled",
 			cls: "text-muted-foreground",
 		},
 	};
@@ -261,6 +264,7 @@ export function DebugPanel({
 	onCancel,
 	rfNodes,
 	onNavigateToNode,
+	focus,
 }: DebugPanelProps) {
 	const [recordId, setRecordId] = useState<string | undefined>(undefined);
 
@@ -351,7 +355,7 @@ export function DebugPanel({
 						) : (
 							<Play className="size-4" />
 						)}
-						{hasActiveRun ? "Run again" : "Run test"}
+						{hasActiveRun && execution?.dryRun ? "Run again" : "Run test"}
 					</Button>
 				)}
 			</div>
@@ -399,6 +403,7 @@ export function DebugPanel({
 						entries={entries}
 						rfNodes={rfNodes}
 						onNavigateToNode={onNavigateToNode}
+						focus={focus}
 					/>
 				</div>
 			) : (
