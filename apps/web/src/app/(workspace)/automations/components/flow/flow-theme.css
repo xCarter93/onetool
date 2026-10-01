@@ -51,6 +51,12 @@
 	--xy-node-boxshadow-selected-default: none;
 }
 
+/* BaseNode draws the focus ring on the card. React Flow only strips the outline
+   on selectable nodes, so non-selectable ghost cards would show both. */
+.react-flow .react-flow__node:focus-visible {
+	outline: none;
+}
+
 /* Connections are fully derived — port dots carry no meaning on this canvas,
    so hide them. Handles keep their geometry (edges still anchor to them). */
 .react-flow .react-flow__handle {

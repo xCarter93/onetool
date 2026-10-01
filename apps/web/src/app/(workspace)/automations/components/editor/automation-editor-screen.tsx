@@ -8,7 +8,10 @@ import { FlowZoomControls } from "../flow/flow-zoom-controls";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
 import { WorkflowDrawer } from "./workflow-drawer";
 import { useAutomationEditor } from "../../hooks/use-automation-editor";
-import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
+import {
+	useKeyboardShortcuts,
+	type KeyboardShortcutOptions,
+} from "../../hooks/use-keyboard-shortcuts";
 import { useSidebarState } from "../../hooks/use-sidebar-state";
 import {
 	MERGE_PREFIX,
@@ -55,6 +58,12 @@ function toSidebarType(t: string): NodeConfigType {
 	return t === "send_notification" || t === "create_record" ? "action" : (t as NodeConfigType);
 }
 
+// The hook needs React Flow, so it runs inside the provider.
+function EditorKeyboardShortcuts(props: KeyboardShortcutOptions) {
+	useKeyboardShortcuts(props);
+	return null;
+}
+
 export function AutomationEditorScreen({ automationId }: { automationId: string | null }) {
 	const router = useRouter();
 	const editor = useAutomationEditor(automationId);
@@ -64,6 +73,12 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const [drawerOpen, setDrawerOpen] = useState(true);
 	const canvasReserve = useCanvasReserve(drawerOpen, sidebar.isOpen);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
+	// The count re-keys the text so a repeated message is announced again.
+	const [announcement, setAnnouncement] = useState({ text: "", count: 0 });
+	const announce = useCallback(
+		(text: string) => setAnnouncement((prev) => ({ text, count: prev.count + 1 })),
+		[]
+	);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
 		navigateFnRef.current = fn;
@@ -85,13 +100,14 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		(edgeId: string, nodeType: string, actionType?: string) => {
 			const insertedId = editor.handleInsertNode(edgeId, nodeType, actionType);
 			if (!insertedId) return;
+			announce("Step added");
 			if (nodeType === "placeholder") {
 				sidebar.openStepPicker(insertedId);
 			} else {
 				sidebar.openNodeConfig(toSidebarType(nodeType), insertedId);
 			}
 		},
-		[editor, sidebar]
+		[announce, editor, sidebar]
 	);
 
 	// Inject onInsertNode into every edge and paint the run state onto edges
@@ -189,12 +205,13 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		(nodeId: string) => {
 			const newId = editor.handleDuplicateNode(nodeId);
 			if (!newId) return;
+			announce("Step duplicated");
 			const source = editor.nodes.find((n) => n.id === nodeId);
 			if (source && source.type !== "placeholder") {
 				sidebar.openNodeConfig(toSidebarType(source.type), newId);
 			}
 		},
-		[editor, sidebar]
+		[announce, editor, sidebar]
 	);
 
 	const handleNodeClick = useCallback(
@@ -233,14 +250,29 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	);
 
 	const handleDeleteNode = useCallback(
-		(nodeId: string) => { sidebar.closeSidebar(); editor.handleDeleteNode(nodeId); },
-		[editor, sidebar]
+		(nodeId: string) => {
+			sidebar.closeSidebar();
+			if (editor.handleDeleteNode(nodeId)) announce("Step deleted");
+		},
+		[announce, editor, sidebar]
 	);
 
 	const handleDeleteTrigger = useCallback(
-		() => { sidebar.closeSidebar(); editor.handleDeleteTrigger(); },
-		[editor, sidebar]
+		() => { sidebar.closeSidebar(); editor.handleDeleteTrigger(); announce("Trigger deleted"); },
+		[announce, editor, sidebar]
 	);
+
+	const handleUndo = useCallback(() => {
+		if (!editor.canUndo) return;
+		editor.handleUndo();
+		announce("Undone");
+	}, [announce, editor]);
+
+	const handleRedo = useCallback(() => {
+		if (!editor.canRedo) return;
+		editor.handleRedo();
+		announce("Redone");
+	}, [announce, editor]);
 
 	const selectedNode = useMemo(() => {
 		if (sidebar.mode?.mode === "node-config") {
@@ -254,17 +286,6 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		}
 		return null;
 	}, [sidebar.mode]);
-
-	useKeyboardShortcuts({
-		selectedNode,
-		onDeleteNode: handleDeleteNode,
-		onDeleteTrigger: handleDeleteTrigger,
-		onUndo: editor.handleUndo,
-		onRedo: editor.handleRedo,
-		onCloseSidebar: sidebar.closeSidebar,
-		canUndo: editor.canUndo,
-		canRedo: editor.canRedo,
-	});
 
 	if (editor.isLoading) {
 		return (
@@ -305,6 +326,17 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	return (
 		<ReactFlowProvider>
+		<EditorKeyboardShortcuts
+			selectedNode={selectedNode}
+			reserve={canvasReserve}
+			onDeleteNode={handleDeleteNode}
+			onDeleteTrigger={handleDeleteTrigger}
+			onUndo={handleUndo}
+			onRedo={handleRedo}
+			onCloseSidebar={sidebar.closeSidebar}
+			canUndo={editor.canUndo}
+			canRedo={editor.canRedo}
+		/>
 		<RunStatusContext.Provider value={editor.hasActiveRun ? editor.runStatuses : null}>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
@@ -322,8 +354,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
-				onUndo={editor.handleUndo}
-				onRedo={editor.handleRedo}
+				onUndo={handleUndo}
+				onRedo={handleRedo}
 				onClearWorkflow={editor.handleRequestClear}
 				controls={<FlowZoomControls reserve={canvasReserve} className="hidden md:flex" />}
 			/>
@@ -370,7 +402,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 						/>
 					)}
 					{editor.undoBanner && (
-						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={editor.handleUndo} />
+						<UndoBanner title={editor.undoBanner.title} message={editor.undoBanner.message} onUndo={handleUndo} />
 					)}
 					{/* Floating config panel — right-side twin of the WorkflowDrawer, over the canvas. */}
 					<AutomationSidebar
@@ -391,6 +423,9 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 					/>
 				</div>
 			</div>
+			<p role="status" aria-live="polite" className="sr-only">
+				<span key={announcement.count}>{announcement.text}</span>
+			</p>
 			<ClearWorkflowDialog open={editor.showClearConfirm} onCancel={editor.handleCancelClear} onConfirm={editor.handleConfirmClear} />
 		</div>
 		</RunStatusContext.Provider>

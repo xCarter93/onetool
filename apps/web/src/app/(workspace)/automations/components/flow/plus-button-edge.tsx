@@ -8,7 +8,7 @@ import {
 } from "@xyflow/react";
 import { NextItemMarker } from "./next-item-marker";
 import { edgeStroke } from "./edge-style";
-import { EdgeInsertButton } from "./edge-insert-button";
+import { EdgeInsertButton, useAddAfterLabel } from "./edge-insert-button";
 import { useEdgeHovered } from "./edge-hover-context";
 
 /**
@@ -21,6 +21,7 @@ import { useEdgeHovered } from "./edge-hover-context";
 export function PlusButtonEdge(props: EdgeProps) {
 	const {
 		id,
+		source,
 		sourceX,
 		sourceY,
 		targetX,
@@ -35,6 +36,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 	const impliedNextItem = data?.impliedNextItem === true;
 	const loop = data?.inLoop === true;
 	const hovered = useEdgeHovered(id);
+	const insertLabel = useAddAfterLabel(source);
 	const onInsertNode = data?.onInsertNode as
 		| ((edgeId: string, nodeType: string, actionType?: string) => void)
 		| undefined;
@@ -65,6 +67,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 						onInsert={onInsertNode}
 						variant="stub"
 						edgeHovered={hovered}
+						label={insertLabel}
 					/>
 					{impliedNextItem && <NextItemMarker x={sourceX} y={fixedTargetY + 18} />}
 				</EdgeLabelRenderer>
@@ -95,6 +98,7 @@ export function PlusButtonEdge(props: EdgeProps) {
 					y={labelY}
 					onInsert={onInsertNode}
 					edgeHovered={hovered}
+					label={insertLabel}
 				/>
 			</EdgeLabelRenderer>
 		</>

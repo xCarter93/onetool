@@ -757,14 +757,14 @@ export function useAutomationEditor(automationId: string | null) {
 	}, []);
 
 	const handleDeleteNode = useCallback(
-		(nodeId: string) => {
+		(nodeId: string): boolean => {
 			const nodeToDelete = nodes.find((node) => node.id === nodeId);
-			if (!nodeToDelete) return;
+			if (!nodeToDelete) return false;
 
 			const { parentId, branch } = findParent(nodeId, nodes);
 			if (parentId === null) {
 				setShowClearConfirm(true);
-				return;
+				return false;
 			}
 
 			// Deleting changes the graph; drop any stale run overlay. Note: NOT
@@ -798,7 +798,7 @@ export function useAutomationEditor(automationId: string | null) {
 					message: "This step and its branches have been removed.",
 				});
 				showUndoToast();
-				return;
+				return true;
 			}
 
 			if (nodeToDelete.type === "loop") {
@@ -821,7 +821,7 @@ export function useAutomationEditor(automationId: string | null) {
 					message: "This loop and its body steps have been removed.",
 				});
 				showUndoToast();
-				return;
+				return true;
 			}
 
 			const childNodeId = nodeToDelete.nextNodeId;
@@ -848,6 +848,7 @@ export function useAutomationEditor(automationId: string | null) {
 				message: "This step has been removed.",
 			});
 			showUndoToast();
+			return true;
 		},
 		[nodes, pushHistory, showUndoToast]
 	);

@@ -17,17 +17,8 @@ export const BranchGhostNodeRF = memo(({ data }: NodeProps<BranchGhostRFNode>) =
 	return (
 		<BaseNode
 			className="w-[300px] cursor-pointer border-dashed border-muted-foreground/30 hover:border-primary/50"
-			role="button"
 			aria-label="Empty branch: add a step"
 			onClick={(e) => {
-				e.stopPropagation();
-				data.onInsertNode?.(data.edgeId, "placeholder");
-			}}
-			onKeyDown={(e) => {
-				// BaseNode is a focusable div — without this the card is reachable
-				// by keyboard but not activatable.
-				if (e.key !== "Enter" && e.key !== " ") return;
-				e.preventDefault();
 				e.stopPropagation();
 				data.onInsertNode?.(data.edgeId, "placeholder");
 			}}

@@ -1,10 +1,28 @@
-import type { ComponentProps } from "react";
+"use client";
+
+import { useEffect, useRef, type ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
 
-export function BaseNode({ className, ...props }: ComponentProps<"div">) {
+export function BaseNode({
+  className,
+  "aria-label": ariaLabel,
+  ...props
+}: Omit<ComponentProps<"div">, "ref">) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // React Flow's `.react-flow__node` wrapper is the node's only tab stop, so
+  // the name goes there; React Flow leaves its aria-label attribute alone.
+  useEffect(() => {
+    const wrapper = ref.current?.closest(".react-flow__node");
+    if (!wrapper || !ariaLabel) return;
+    wrapper.setAttribute("aria-label", ariaLabel);
+    return () => wrapper.removeAttribute("aria-label");
+  }, [ariaLabel]);
+
   return (
     <div
+      ref={ref}
       className={cn(
         "bg-card text-card-foreground relative rounded-lg border border-border",
         // Resting elevation so cards lift off the canvas in both themes.
@@ -17,9 +35,10 @@ export function BaseNode({ className, ...props }: ComponentProps<"div">) {
         // selected state from inside. This is the single selection treatment —
         // a brand-colored ring — so individual node cards must not add their own.
         "in-[.selected]:border-primary in-[.selected]:ring-4 in-[.selected]:ring-primary/20 in-[.selected]:shadow-md",
+        // Keyboard focus lands on the wrapper, whose outline flow-theme.css removes.
+        "in-[.react-flow__node:focus-visible]:ring-2 in-[.react-flow__node:focus-visible]:ring-ring/50",
         className,
       )}
-      tabIndex={0}
       {...props}
     />
   );

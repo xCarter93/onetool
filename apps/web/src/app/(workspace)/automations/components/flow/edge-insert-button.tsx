@@ -1,7 +1,9 @@
 "use client";
 
+import { useNodesData } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { stepIdentity } from "../../lib/step-family";
 
 interface EdgeInsertButtonProps {
 	edgeId: string;
@@ -17,6 +19,20 @@ interface EdgeInsertButtonProps {
 	variant?: "inline" | "stub";
 	/** The owning edge's interaction path is hovered. */
 	edgeHovered?: boolean;
+	label?: string;
+}
+
+// Synthetic nodes have no step name worth reading out.
+const UNNAMED_SOURCES = new Set(["merge", "placeholder", "triggerPlaceholder"]);
+
+/** Accessible name for a "+" that inserts below `sourceId`. */
+export function useAddAfterLabel(sourceId: string): string {
+	const data = useNodesData(sourceId)?.data as
+		| { nodeType?: string; config?: { action?: { type?: string } } }
+		| undefined;
+	const nodeType = data?.nodeType;
+	if (!nodeType || UNNAMED_SOURCES.has(nodeType)) return "Add step";
+	return `Add a step after ${stepIdentity(nodeType, data.config?.action?.type).name}`;
 }
 
 /**
@@ -31,6 +47,7 @@ export function EdgeInsertButton({
 	onInsert,
 	variant = "inline",
 	edgeHovered = false,
+	label = "Add step",
 }: EdgeInsertButtonProps) {
 	const stub = variant === "stub";
 	return (
@@ -61,7 +78,7 @@ export function EdgeInsertButton({
 									: "border-border"
 							)
 				)}
-				aria-label="Add step"
+				aria-label={label}
 			>
 				<Plus className={stub ? "h-3.5 w-3.5" : "h-3 w-3"} />
 			</button>
