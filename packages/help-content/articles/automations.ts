@@ -159,11 +159,36 @@ export const automationsArticles: HelpArticle[] = [
 				],
 			},
 			{
+				heading: "Move around the canvas",
+				blocks: [
+					{
+						type: "paragraph",
+						text: "Scroll or drag to move around the canvas. To zoom, pinch on a trackpad, or hold **⌘** on a Mac or **Ctrl** on Windows while you scroll.",
+					},
+					{
+						type: "list",
+						items: [
+							"The **-** and **+** buttons in the top bar zoom out and in. Click the percentage between them to jump to **Zoom to fit**, 50%, 100%, or 200%.",
+							"**Undo** and **Redo** sit just left of the zoom controls. They step back and forward through your edits.",
+							"The keyboard button next to **Save** lists every shortcut.",
+						],
+					},
+					{
+						type: "tip",
+						text: "**+** and **-** zoom, **Shift+1** fits the whole flow, and **Shift+0** returns to 100%. **⌘Z** undoes and **⌘⇧Z** redoes, or **Ctrl+Z** and **Ctrl+Shift+Z** on Windows. **Backspace** deletes the selected step and **Esc** closes the side panel.",
+					},
+				],
+			},
+			{
 				heading: "Save, then publish",
 				blocks: [
 					{
 						type: "paragraph",
 						text: "**Save** in the top bar stores your work as a draft. Nothing runs yet. Whenever your draft differs from what is live, a floating banner appears on the canvas with a publish button: **Publish workflow** the first time, **Publish changes** after that.",
+					},
+					{
+						type: "paragraph",
+						text: "Edits you haven't saved show an **Unsaved changes** marker in the top bar, and **Save** stays disabled until there is something new to save.",
 					},
 					{
 						type: "steps",
@@ -186,7 +211,7 @@ export const automationsArticles: HelpArticle[] = [
 				blocks: [
 					{
 						type: "paragraph",
-						text: "A collapsible drawer on the right side of the editor holds two tabs: **Resources** and **Debug**. The **Debug** tab is where you run safe test runs against real data and review what each step did, covered in [Testing and run history](/help/automations/testing-and-run-history).",
+						text: "A collapsible drawer on the left side of the editor holds two tabs: **Resources** and **Debug**. The **Debug** tab is where you run safe test runs against real data and review what each step did, covered in [Testing and run history](/help/automations/testing-and-run-history).",
 					},
 				],
 			},
@@ -199,6 +224,10 @@ export const automationsArticles: HelpArticle[] = [
 			{
 				question: "I deleted the trigger and the whole canvas cleared. Why?",
 				answer: "The trigger is the root of the flow, so removing it clears the canvas. The editor asks you to confirm before it does.",
+			},
+			{
+				question: "How do I delete an automation or start over?",
+				answer: "Open the **⋯** menu at the right end of the top bar. **Clear workflow** removes every step and keeps the trigger. **Delete automation** deletes the automation and its run history for good.",
 			},
 			{
 				question: "What does the beta badge in the editor mean?",

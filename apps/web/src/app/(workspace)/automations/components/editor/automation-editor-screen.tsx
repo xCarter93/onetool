@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ReactFlowProvider } from "@xyflow/react";
-import { AutomationFlow, FIT_VIEW_OPTIONS } from "../flow/automation-flow";
+import { AutomationFlow, useCanvasReserve } from "../flow/automation-flow";
 import { FlowZoomControls } from "../flow/flow-zoom-controls";
 import { AutomationSidebar } from "../sidebar/automation-sidebar";
 import { WorkflowDrawer } from "./workflow-drawer";
@@ -62,6 +62,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 	const canPublish = allows("automationPublish");
 	const sidebar = useSidebarState();
 	const [drawerOpen, setDrawerOpen] = useState(true);
+	const canvasReserve = useCanvasReserve(drawerOpen, sidebar.isOpen);
 	const navigateFnRef = useRef<((nodeId: string) => void) | null>(null);
 
 	const handleNavigateReady = useCallback((fn: (nodeId: string) => void) => {
@@ -307,24 +308,34 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		<RunStatusContext.Provider value={editor.hasActiveRun ? editor.runStatuses : null}>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
+				automationId={editor.automation?._id ?? null}
 				name={editor.name}
 				description={editor.description}
 				status={editor.status}
 				isSaving={editor.isSaving}
+				hasUnsavedChanges={editor.hasUnsavedChanges}
+				canSave={editor.canSave}
+				canUndo={editor.canUndo}
+				canRedo={editor.canRedo}
+				canClear={editor.nodes.length > 0}
 				onBack={() => router.push("/automations")}
 				onNameChange={editor.setName}
 				onDescriptionChange={editor.setDescription}
 				onSave={editor.handleSave}
-				controls={<FlowZoomControls fitViewOptions={FIT_VIEW_OPTIONS} className="hidden md:flex" />}
+				onUndo={editor.handleUndo}
+				onRedo={editor.handleRedo}
+				onClearWorkflow={editor.handleRequestClear}
+				controls={<FlowZoomControls reserve={canvasReserve} className="hidden md:flex" />}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<div className="relative min-h-0 min-w-0 flex-1 bg-(--workspace-ground)">
 					<AutomationFlow
 						nodes={flowNodes}
 						edges={flowEdges}
+						reserve={canvasReserve}
 						onNodeClick={handleNodeClick}
 						onPaneClick={handlePaneClick}
-							onNavigateReady={handleNavigateReady}
+						onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 						onDuplicateNode={handleDuplicateNode}
 						runId={editor.execution?._id}

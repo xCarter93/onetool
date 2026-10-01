@@ -902,6 +902,10 @@ export function useAutomationEditor(automationId: string | null) {
 		clearUndoState();
 	}, [clearUndoState, pushHistory]);
 
+	const handleRequestClear = useCallback(() => {
+		setShowClearConfirm(true);
+	}, []);
+
 	const handleCancelClear = useCallback(() => {
 		setShowClearConfirm(false);
 	}, []);
@@ -932,6 +936,14 @@ export function useAutomationEditor(automationId: string | null) {
 	const hasSteps = serialized.nodes.length > 0;
 	const isDirty =
 		savedSignature !== null && savedSignature !== workingSignature;
+	// Name and description sit outside the definition signature (they don't
+	// affect publish state), so Save compares them to the loaded row.
+	const isMetaDirty =
+		!!existingAutomation &&
+		(name.trim() !== existingAutomation.name.trim() ||
+			description.trim() !== (existingAutomation.description ?? "").trim());
+	const isNew = !effectiveId;
+	const hasUnsavedChanges = isNew ? trigger !== null : isDirty || isMetaDirty;
 	const publishedSignature = existingAutomation?.publishedSnapshot
 		? definitionSignature(
 				legacyTriggerToDraft(
@@ -1140,6 +1152,9 @@ export function useAutomationEditor(automationId: string | null) {
 		status,
 		isPublished,
 		isDirty,
+		hasUnsavedChanges,
+		// A never-saved automation stays saveable; Save is how it gets created.
+		canSave: isNew || hasUnsavedChanges,
 		needsPublish,
 		publishLabel,
 		isPublishing,
@@ -1170,6 +1185,7 @@ export function useAutomationEditor(automationId: string | null) {
 		handlePaneClick,
 		handleConfirmClear,
 		handleCancelClear,
+		handleRequestClear,
 		showClearConfirm,
 		// State mirror of the ref-held stacks (see historyDepth above).
 		canUndo: historyDepth.past > 0,
