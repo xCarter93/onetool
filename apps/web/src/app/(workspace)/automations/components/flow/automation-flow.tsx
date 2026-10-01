@@ -109,6 +109,10 @@ interface AutomationFlowProps {
 	onDuplicateNode?: (nodeId: string) => void;
 	/** Callback ref that receives a navigate function once React Flow is ready */
 	onNavigateReady?: (navigateFn: (nodeId: string) => void) => void;
+	/** Test run on the canvas; a new id resumes following after a manual pan. */
+	runId?: string;
+	/** Running step of a live run; the viewport follows it until the user pans. */
+	followNodeId?: string;
 }
 
 function AutomationFlowInner({
@@ -119,8 +123,10 @@ function AutomationFlowInner({
 	onDeleteNode,
 	onDuplicateNode,
 	onNavigateReady,
+	runId,
+	followNodeId,
 }: AutomationFlowProps) {
-	const { fitView, setCenter } = useReactFlow();
+	const { fitView, setCenter, getZoom } = useReactFlow();
 	// React Flow defaults to colorMode="light", stamping `.light` on its
 	// container — which re-resolves the app's .light theme tokens over the
 	// whole canvas subtree in dark mode. Keep it synced to the real theme.
@@ -314,22 +320,45 @@ function AutomationFlowInner({
 		applyLayoutAnimated(applied.nodes, applied.edges);
 	}, [applyLayoutAnimated, edges, nodes]);
 
-	// Expose a navigate-to-node function to the parent via callback ref
-	const navigateToNode = useCallback(
-		(nodeId: string) => {
+	const centerOnNode = useCallback(
+		(nodeId: string, zoom: number) => {
 			const targetNode = nodesRef.current.find((n) => n.id === nodeId);
-			if (!targetNode) return;
+			if (!targetNode) return false;
 			const width = targetNode.measured?.width ?? 300;
 			const height = targetNode.measured?.height ?? 60;
+			const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 			setCenter(
 				targetNode.position.x + width / 2,
 				targetNode.position.y + height / 2,
-				{ zoom: 1, duration: 300 }
+				{ zoom, duration: reduced ? 0 : 300 }
 			);
-			onNodeClick?.(nodeId);
+			return true;
 		},
-		[setCenter, onNodeClick]
+		[setCenter]
 	);
+
+	// Expose a navigate-to-node function to the parent via callback ref
+	const navigateToNode = useCallback(
+		(nodeId: string) => {
+			if (centerOnNode(nodeId, 1)) onNodeClick?.(nodeId);
+		},
+		[centerOnNode, onNodeClick]
+	);
+
+	// Programmatic viewport moves report a null event, so only a real
+	// pan/zoom gesture stops the follow.
+	const userMovedRef = useRef(false);
+	const handleMoveStart = useCallback((event: MouseEvent | TouchEvent | null) => {
+		if (event) userMovedRef.current = true;
+	}, []);
+
+	useEffect(() => {
+		userMovedRef.current = false;
+	}, [runId]);
+
+	useEffect(() => {
+		if (followNodeId && !userMovedRef.current) centerOnNode(followNodeId, getZoom());
+	}, [followNodeId, centerOnNode, getZoom]);
 
 	useEffect(() => {
 		onNavigateReady?.(navigateToNode);
@@ -378,6 +407,7 @@ function AutomationFlowInner({
 				onEdgesChange={onEdgesChange}
 				onNodeClick={handleNodeClick}
 				onPaneClick={handlePaneClickInternal}
+				onMoveStart={handleMoveStart}
 				onEdgeMouseEnter={handleEdgeMouseEnter}
 				onEdgeMouseLeave={handleEdgeMouseLeave}
 				nodeTypes={nodeTypes}

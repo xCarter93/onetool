@@ -72,11 +72,21 @@
 	}
 }
 
-/* Debug/test-run replay: the executed path flows. Applied per-edge via
-   className when a run traversed the edge. */
+/* Test-run states, applied per-edge via className (see runEdgeClass). Only
+   the edge into the running step marches; failed and skipped stay static. */
 .react-flow__edge.flow-edge-running .react-flow__edge-path {
 	stroke-dasharray: 6 4;
 	animation: flow-edge-dash 700ms linear infinite;
+}
+
+/* edgeStroke reads --flow-edge-run before its own palette, so this beats the
+   inline stroke without !important. */
+.react-flow__edge.flow-edge-failed {
+	--flow-edge-run: var(--color-danger);
+}
+
+.react-flow__edge.flow-edge-skipped .react-flow__edge-path {
+	stroke-opacity: 0.4;
 }
 
 @keyframes flow-edge-dash {

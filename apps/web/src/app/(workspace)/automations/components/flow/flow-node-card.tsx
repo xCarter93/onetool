@@ -5,6 +5,7 @@ import { Copy, EllipsisVertical, Trash2, TriangleAlert, type LucideIcon } from "
 import { cn } from "@/lib/utils";
 import { BaseNode, BaseNodeHeaderTitle } from "@/components/base-node";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -18,7 +19,9 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { STEP_FAMILY_STYLE, type StepFamily } from "../../lib/step-family";
+import { RUN_STATUS_META, type NodeRunStatus } from "../../lib/run-status";
 import { useNodeActions } from "./node-actions-context";
+import { useRunStatuses } from "./run-status-context";
 
 interface FlowNodeCardProps {
 	nodeId: string;
@@ -40,6 +43,23 @@ interface FlowNodeCardProps {
 
 const NOT_DUPLICABLE = "Branching steps can't be duplicated yet";
 
+// The slot stays reserved for the whole run so the header never shifts as steps
+// change state; the glyph inherits the band color and the wrapper ring carries tone.
+function RunStatusIcon({ status }: { status: NodeRunStatus | undefined }) {
+	if (!status || status === "idle") return <span className="size-4 shrink-0" aria-hidden />;
+	const { icon: Icon, label } = RUN_STATUS_META[status];
+	return (
+		<span className="flex size-4 shrink-0 items-center justify-center">
+			{Icon ? (
+				<Icon className="size-4" aria-hidden />
+			) : (
+				<Spinner className="size-4 motion-reduce:animate-none" role="presentation" aria-hidden aria-label={undefined} />
+			)}
+			<span className="sr-only">{label}</span>
+		</span>
+	);
+}
+
 export function FlowNodeCard({
 	nodeId,
 	family,
@@ -56,15 +76,22 @@ export function FlowNodeCard({
 	const { band } = STEP_FAMILY_STYLE[family];
 	const actions = useNodeActions();
 	const showMenu = menu && (actions.onDuplicate || actions.onDelete);
+	const runStatuses = useRunStatuses();
+	const runStatus = runStatuses?.[nodeId];
+	const runLabel = runStatus && runStatus !== "idle" ? RUN_STATUS_META[runStatus].label : null;
 
 	const card = (
-		<BaseNode className={cn("w-[300px]", className)} aria-label={ariaLabel}>
+		<BaseNode
+			className={cn("w-[300px]", className)}
+			aria-label={runLabel ? `${ariaLabel}, ${runLabel}` : ariaLabel}
+		>
 			{handles}
 			<header
 				className={cn("flex h-9 items-center gap-2 rounded-t-[inherit] px-3", band)}
 			>
 				<Icon className="h-4 w-4 shrink-0" aria-hidden />
 				<BaseNodeHeaderTitle className="truncate text-sm">{title}</BaseNodeHeaderTitle>
+				{runStatuses && <RunStatusIcon status={runStatus} />}
 				{showMenu && (
 					<DropdownMenu>
 						<DropdownMenuTrigger

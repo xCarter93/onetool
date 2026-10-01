@@ -15,14 +15,17 @@ import {
 	TERMINAL_PREFIX,
 	TRIGGER_NODE_ID,
 	TRIGGER_PLACEHOLDER_ID,
+	isContainerId,
 	isGhostId,
+	isMergeId,
 	isTerminalId,
 } from "../../lib/flow-adapter";
 import { EditorTopBar } from "./editor-top-bar";
 import { UndoBanner } from "./undo-banner";
 import { UnpublishedBanner } from "./unpublished-banner";
 import { ClearWorkflowDialog } from "./clear-workflow-dialog";
-import { runEdgeFlowClass, runStatusRingClass } from "../../lib/run-status";
+import { runEdgeClass, runStatusRingClass } from "../../lib/run-status";
+import { RunStatusContext } from "../flow/run-status-context";
 import { validateWorkflowForSave } from "../../lib/validation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,6 +44,11 @@ type NodeConfigType =
 	| "delay_until"
 	| "end"
 	| "next_item";
+
+/** Canvas-only nodes that never run, so they're never dimmed as "not reached". */
+function isCanvasOnlyNode(id: string): boolean {
+	return id === TRIGGER_NODE_ID || isContainerId(id) || isMergeId(id) || isTerminalId(id) || isGhostId(id);
+}
 
 /** Map sub-action types to their sidebar config type */
 function toSidebarType(t: string): NodeConfigType {
@@ -85,36 +93,42 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 		[editor, sidebar]
 	);
 
-	// Inject onInsertNode into every edge; during a live run, animate the
-	// executed path (dashes flow along edges the run has traversed). Statuses
-	// are iteration-scoped so a loop condition lights only the branch the
-	// current iteration took. Synthetic edge endpoints resolve to the real
-	// node whose status they carry: the trigger implicitly succeeded once the
-	// run is live, merge dots carry their condition's status, terminal stubs
-	// their owner's.
+	// Inject onInsertNode into every edge and paint the run state onto edges
+	// (see runEdgeClass). Statuses are iteration-scoped so a loop condition
+	// marks only the branch the current iteration took. Synthetic edge
+	// endpoints resolve to the real node whose status they carry: the trigger
+	// implicitly succeeded once a run exists, merge dots carry their
+	// condition's status, terminal stubs their owner's.
 	const isLiveRun = editor.execution?.status === "running";
 	const flowEdges = useMemo(() => {
-		const statusFor = (id: string) => {
-			if (id === TRIGGER_NODE_ID) return "success" as const;
+		const realId = (id: string) => {
 			let real = id;
 			if (real.startsWith(TERMINAL_PREFIX)) {
 				real = real.slice(TERMINAL_PREFIX.length).replace(/-(after|yes|no)$/, "");
 			}
 			if (real.startsWith(MERGE_PREFIX)) real = real.slice(MERGE_PREFIX.length);
-			return editor.liveTraversalStatuses[real];
+			return real;
 		};
+		const statusFor = (real: string) =>
+			real === TRIGGER_NODE_ID ? ("success" as const) : editor.liveTraversalStatuses[real];
 		return editor.layoutedEdges.map((e) => {
 			const withInsert = { ...e, data: { ...e.data, onInsertNode: handleEdgeInsert } };
-			if (!isLiveRun) return withInsert;
-			const flow = runEdgeFlowClass(statusFor(e.source), statusFor(e.target));
-			return flow
-				? { ...withInsert, className: cn(withInsert.className, flow) }
+			if (!editor.hasActiveRun) return withInsert;
+			const source = realId(e.source);
+			const target = realId(e.target);
+			// A node's edge into its own terminal stub resolves to one node.
+			if (source === target) return withInsert;
+			const runClass = runEdgeClass(statusFor(source), statusFor(target));
+			return runClass
+				? { ...withInsert, className: cn(withInsert.className, runClass) }
 				: withInsert;
 		});
-	}, [editor.layoutedEdges, editor.liveTraversalStatuses, handleEdgeInsert, isLiveRun]);
+	}, [editor.layoutedEdges, editor.liveTraversalStatuses, editor.hasActiveRun, handleEdgeInsert]);
 
-	// Paint each node's live run status onto its React Flow wrapper (ring/pulse);
-	// ghost "Choose a step" cards get the insert callback (they insert via
+	// Paint each node's run status onto its React Flow wrapper (ring/halo) and,
+	// while the run is live, dim steps it hasn't reached. The transition class
+	// stays on for the whole run so rings and dimming ease out, not pop.
+	// Ghost "Choose a step" cards get the insert callback (they insert via
 	// their incoming branch edge, same flow as the "+" buttons).
 	// First save-blocking problem per node, shown on the card itself. Placeholder
 	// errors are skipped (the placeholder card is the fix); trigger errors carry
@@ -151,12 +165,23 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 								},
 							}
 						: node;
-				const ring = runStatusRingClass(editor.runStatuses[node.id]);
-				return ring
-					? { ...withInsert, className: cn(withInsert.className, ring) }
-					: withInsert;
+				if (!editor.hasActiveRun) return withInsert;
+				const status = editor.runStatuses[node.id];
+				const dimmed =
+					isLiveRun &&
+					(status === undefined || status === "idle") &&
+					!isCanvasOnlyNode(node.id);
+				return {
+					...withInsert,
+					className: cn(
+						withInsert.className,
+						"rounded-lg transition-[box-shadow,opacity] duration-200 ease-(--ease-out-quint) motion-reduce:transition-none",
+						runStatusRingClass(status),
+						dimmed && "opacity-40"
+					),
+				};
 			}),
-		[editor.layoutedNodes, editor.runStatuses, handleEdgeInsert, nodeWarnings]
+		[editor.layoutedNodes, editor.runStatuses, editor.hasActiveRun, isLiveRun, handleEdgeInsert, nodeWarnings]
 	);
 
 	const handleDuplicateNode = useCallback(
@@ -279,6 +304,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 
 	return (
 		<ReactFlowProvider>
+		<RunStatusContext.Provider value={editor.hasActiveRun ? editor.runStatuses : null}>
 		<div className="workspace-detail flex h-[100dvh] min-h-0 flex-col md:h-full md:flex-1">
 			<EditorTopBar
 				name={editor.name}
@@ -301,6 +327,8 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 							onNavigateReady={handleNavigateReady}
 						onDeleteNode={handleDeleteNode}
 						onDuplicateNode={handleDuplicateNode}
+						runId={editor.execution?._id}
+						followNodeId={isLiveRun ? editor.execution?.currentNodeId : undefined}
 					/>
 					{/* Floats over the canvas so the dotted background runs behind it. */}
 					<WorkflowDrawer
@@ -355,6 +383,7 @@ export function AutomationEditorScreen({ automationId }: { automationId: string 
 			</div>
 			<ClearWorkflowDialog open={editor.showClearConfirm} onCancel={editor.handleCancelClear} onConfirm={editor.handleConfirmClear} />
 		</div>
+		</RunStatusContext.Provider>
 		</ReactFlowProvider>
 	);
 }

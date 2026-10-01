@@ -1,3 +1,5 @@
+import { Check, Minus, X, type LucideIcon } from "lucide-react";
+
 /**
  * Per-node run status derived from a live workflow execution, used to paint
  * the canvas during test/manual runs and to render the step list.
@@ -69,10 +71,10 @@ export function computeNodeStatuses(
 
 /**
  * Like computeNodeStatuses, but loop-body entries only count when they belong
- * to their loop's latest revealed iteration. Drives the live edge-flow
- * animation: a condition inside a loop lights up the branch the current
- * iteration took, not every branch any iteration ever took. Node rings keep
- * the aggregated map — a failure three iterations back stays visible there.
+ * to their loop's latest revealed iteration. Drives the edge run classes: a
+ * condition inside a loop marks the branch the current iteration took, not
+ * every branch any iteration ever took. Node rings keep the aggregated map —
+ * a failure three iterations back stays visible there.
  */
 export function computeLiveTraversalStatuses(
 	execution: ExecutionLike | null | undefined
@@ -109,39 +111,48 @@ export function computeLiveTraversalStatuses(
 }
 
 /**
- * Class applied to a React Flow edge wrapper while a live run flows through
- * it: the source has been traversed and execution has reached the target.
- * Callers resolve synthetic canvas ids (trigger, merge dots, terminal stubs)
- * to the real node whose status they carry before looking statuses up.
- * flow-theme.css animates the dashes along the executed path; callers gate on
- * the execution actually being live so finished runs leave a calm canvas.
+ * Class applied to a React Flow edge wrapper for its run state. Callers
+ * resolve synthetic canvas ids (trigger, merge dots, terminal stubs) to the
+ * real node whose status they carry, and skip edges whose ends resolve to the
+ * same node. Only the edge into the running step marches (running is only
+ * ever set while the execution is live); failed and skipped marks stay after
+ * the run so the canvas still shows where it stopped. Styled in flow-theme.css.
  */
-export function runEdgeFlowClass(
+export function runEdgeClass(
 	source: NodeRunStatus | undefined,
 	target: NodeRunStatus | undefined
 ): string {
 	const sourceTraversed = source === "success" || source === "running";
-	const targetReached = target !== undefined && target !== "idle";
-	return sourceTraversed && targetReached ? "flow-edge-running" : "";
+	if (target === "running" && sourceTraversed) return "flow-edge-running";
+	if (target === "failed" && sourceTraversed) return "flow-edge-failed";
+	if (target === "skipped" && source !== undefined && source !== "idle") {
+		return "flow-edge-skipped";
+	}
+	return "";
 }
 
+type ActiveRunStatus = Exclude<NodeRunStatus, "idle">;
+
+const RING = "ring-2 ring-offset-2 ring-offset-background";
+
 /**
- * Ring/pulse classes applied to a React Flow node wrapper for its run status.
- * The pulse is gated behind motion-safe (prefers-reduced-motion). Color is
- * paired with the test-run status line ("Failed at step N") so it's never the
- * sole status signal.
+ * Header icon, screen-reader label and wrapper ring per run status. The card
+ * pairs the icon with the ring so color is never the sole status signal; the
+ * running icon is the shared Spinner.
  */
+export const RUN_STATUS_META: Record<
+	ActiveRunStatus,
+	{ label: string; icon?: LucideIcon; ring: string }
+> = {
+	running: {
+		label: "Running",
+		ring: `${RING} ring-info shadow-[0_0_0_8px_color-mix(in_oklch,var(--color-info)_25%,transparent)]`,
+	},
+	success: { label: "Succeeded", icon: Check, ring: `${RING} ring-success` },
+	failed: { label: "Failed", icon: X, ring: `${RING} ring-danger` },
+	skipped: { label: "Skipped", icon: Minus, ring: `${RING} ring-muted-foreground/40` },
+};
+
 export function runStatusRingClass(status: NodeRunStatus | undefined): string {
-	switch (status) {
-		case "running":
-			return "rounded-lg ring-2 ring-info ring-offset-2 ring-offset-background motion-safe:animate-pulse";
-		case "success":
-			return "rounded-lg ring-2 ring-success ring-offset-2 ring-offset-background";
-		case "failed":
-			return "rounded-lg ring-2 ring-danger ring-offset-2 ring-offset-background";
-		case "skipped":
-			return "rounded-lg ring-2 ring-muted-foreground/40 ring-offset-2 ring-offset-background";
-		default:
-			return "";
-	}
+	return status && status !== "idle" ? RUN_STATUS_META[status].ring : "";
 }

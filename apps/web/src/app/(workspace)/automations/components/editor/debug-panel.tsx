@@ -63,18 +63,36 @@ const OBJECT_LABEL: Record<string, string> = {
 };
 
 /** Overall run status line — a failure is never conveyed by color alone. */
-function StatusLine({ execution }: { execution: ExecutionDoc }) {
+function StatusLine({
+	execution,
+	onNavigateToNode,
+}: {
+	execution: ExecutionDoc;
+	onNavigateToNode: (nodeId: string) => void;
+}) {
 	if (!execution) return null;
 	const count = execution.nodesExecuted.length;
 	const failedIndex = execution.nodesExecuted.findIndex(
 		(entry) => entry.result === "failed"
 	);
-	const failedText =
-		failedIndex >= 0
-			? `Failed at step ${failedIndex + 1}${execution.error ? `: ${execution.error}` : ""}`
-			: execution.error
-				? `Failed: ${execution.error}`
-				: "Test failed";
+	const failedText: ReactNode =
+		failedIndex >= 0 ? (
+			<>
+				<Button
+					variant="link"
+					size="sm"
+					className="h-auto p-0 text-xs text-inherit underline"
+					onClick={() => onNavigateToNode(execution.nodesExecuted[failedIndex].nodeId)}
+				>
+					Failed at step {failedIndex + 1}
+				</Button>
+				{execution.error ? `: ${execution.error}` : ""}
+			</>
+		) : execution.error ? (
+			`Failed: ${execution.error}`
+		) : (
+			"Test failed"
+		);
 
 	const { total: loopTotal, failed: loopFailed } = summarizeLoopFailures(
 		execution.loopSummary
@@ -94,7 +112,7 @@ function StatusLine({ execution }: { execution: ExecutionDoc }) {
 
 	// Typed against RunStatus so a future added status fails to compile here
 	// instead of silently falling through the `if (!s) return null` guard.
-	const map: Record<RunStatus, { icon: ReactNode; text: string; cls: string }> = {
+	const map: Record<RunStatus, { icon: ReactNode; text: ReactNode; cls: string }> = {
 		running: {
 			icon: (
 				<Loader2 className="size-4 animate-spin text-primary" />
@@ -338,7 +356,9 @@ export function DebugPanel({
 				)}
 			</div>
 
-			{hasActiveRun && <StatusLine execution={execution} />}
+			{hasActiveRun && (
+				<StatusLine execution={execution} onNavigateToNode={onNavigateToNode} />
+			)}
 
 			{hasActiveRun && execution && execution.status !== "running" && (
 				<PartialProgressBanner execution={execution} />

@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
 	computeLiveTraversalStatuses,
 	computeNodeStatuses,
-	runEdgeFlowClass,
+	runEdgeClass,
+	RUN_STATUS_META,
 	runStatusRingClass,
 } from "./run-status";
 
@@ -76,8 +77,18 @@ describe("runStatusRingClass", () => {
 		expect(runStatusRingClass(undefined)).toBe("");
 	});
 
-	it("gates the running pulse behind motion-safe", () => {
-		expect(runStatusRingClass("running")).toContain("motion-safe:animate-pulse");
+	it("holds a steady halo on running instead of pulsing the card", () => {
+		expect(runStatusRingClass("running")).not.toContain("animate-pulse");
+		expect(runStatusRingClass("running")).toContain("shadow-");
+	});
+});
+
+describe("RUN_STATUS_META", () => {
+	it("labels every non-idle status for screen readers", () => {
+		expect(RUN_STATUS_META.running.label).toBe("Running");
+		expect(RUN_STATUS_META.success.label).toBe("Succeeded");
+		expect(RUN_STATUS_META.failed.label).toBe("Failed");
+		expect(RUN_STATUS_META.skipped.label).toBe("Skipped");
 	});
 });
 
@@ -135,22 +146,34 @@ describe("computeLiveTraversalStatuses", () => {
 	});
 });
 
-describe("runEdgeFlowClass", () => {
-	it("flows when the source succeeded and the target was reached", () => {
-		expect(runEdgeFlowClass("success", "success")).toBe("flow-edge-running");
+describe("runEdgeClass", () => {
+	it("marches only the edge into the running step", () => {
+		expect(runEdgeClass("success", "running")).toBe("flow-edge-running");
+		expect(runEdgeClass("running", "running")).toBe("flow-edge-running");
 	});
 
-	it("flows when the source and target are both running", () => {
-		expect(runEdgeFlowClass("running", "running")).toBe("flow-edge-running");
+	it("leaves completed edges solid", () => {
+		expect(runEdgeClass("success", "success")).toBe("");
+	});
+
+	it("marks the edge into a failed step", () => {
+		expect(runEdgeClass("success", "failed")).toBe("flow-edge-failed");
+	});
+
+	it("marks edges into skipped steps, including inside a skipped branch", () => {
+		expect(runEdgeClass("success", "skipped")).toBe("flow-edge-skipped");
+		expect(runEdgeClass("skipped", "skipped")).toBe("flow-edge-skipped");
 	});
 
 	it("returns empty when the target hasn't been reached", () => {
-		expect(runEdgeFlowClass("success", undefined)).toBe("");
-		expect(runEdgeFlowClass("success", "idle")).toBe("");
+		expect(runEdgeClass("success", undefined)).toBe("");
+		expect(runEdgeClass("success", "idle")).toBe("");
 	});
 
-	it("returns empty when the source was skipped or failed", () => {
-		expect(runEdgeFlowClass("skipped", "success")).toBe("");
-		expect(runEdgeFlowClass("failed", "success")).toBe("");
+	it("returns empty when the source never ran", () => {
+		expect(runEdgeClass(undefined, "running")).toBe("");
+		expect(runEdgeClass(undefined, "failed")).toBe("");
+		expect(runEdgeClass(undefined, "skipped")).toBe("");
+		expect(runEdgeClass("skipped", "running")).toBe("");
 	});
 });
