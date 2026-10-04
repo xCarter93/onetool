@@ -1,3 +1,5 @@
+import "@/app/globals.css";
+import "@/app/app-theme.css";
 import type { Metadata } from "next";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HelpFooter } from "@/components/help/help-footer";

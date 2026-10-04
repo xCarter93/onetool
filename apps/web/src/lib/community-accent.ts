@@ -41,8 +41,8 @@ export const COMMUNITY_ACCENT_PRESETS: ReadonlyArray<{
 
 /**
  * The page background each colour mode renders, copied verbatim from the `--bg`
- * declarations in `app/globals.css`. The solver needs a number and CSS is not
- * readable at runtime, so `community-accent.test.ts` reads globals.css and fails
+ * declarations in `app/shared.css`. The solver needs a number and CSS is not
+ * readable at runtime, so `community-accent.test.ts` reads shared.css and fails
  * if either of these strings drifts from the stylesheet.
  */
 export const COMMUNITY_PAGE_BACKGROUND: Record<CommunityColorMode, string> = {
@@ -104,7 +104,7 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 }
 
 /**
- * `oklch(L C H)` to sRGB. Only the space globals.css writes its tokens in, and
+ * `oklch(L C H)` to sRGB. Only the space shared.css writes its tokens in, and
  * only the three-number form — this is a reader for our own stylesheet, not a
  * general CSS colour parser.
  */

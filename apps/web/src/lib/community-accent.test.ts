@@ -62,7 +62,7 @@ describe("isAccentHex", () => {
 });
 
 describe("oklchToRgb", () => {
-	it("matches the two token values globals.css states in both forms", () => {
+	it("matches the two token values shared.css states in both forms", () => {
 		// --primary is rgb(0, 166, 244) in light and this oklch in dark.
 		expect(oklchToRgb("oklch(0.685 0.169 237.323)")).toEqual([0, 166, 244]);
 		expect(oklchToRgb(COMMUNITY_PAGE_BACKGROUND.light)).toEqual([
@@ -72,14 +72,14 @@ describe("oklchToRgb", () => {
 });
 
 describe("COMMUNITY_PAGE_BACKGROUND", () => {
-	it("still matches the --bg tokens in globals.css", () => {
+	it("still matches the --bg tokens in shared.css", () => {
 		const css = readFileSync(
-			join(__dirname, "..", "app", "globals.css"),
+			join(__dirname, "..", "app", "shared.css"),
 			"utf8",
 		);
 		const blockFor = (selector: string) => {
 			const start = css.indexOf(selector);
-			expect(start, `${selector} block missing from globals.css`).toBeGreaterThan(-1);
+			expect(start, `${selector} block missing from shared.css`).toBeGreaterThan(-1);
 			return css.slice(start, css.indexOf("}", start));
 		};
 		const bgIn = (block: string) => block.match(/--bg:\s*([^;]+);/)?.[1].trim();

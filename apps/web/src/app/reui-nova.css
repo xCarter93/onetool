@@ -6,8 +6,8 @@
  *   dist/tailwind.css (the variants dual-match Radix data-state and Base UI
  *   data-* vocabularies; required by the @apply rules below)
  *
- * Imported from globals.css. Re-sync from upstream is deliberate/manual —
- * update the pinned commit above when doing so.
+ * Imported from globals.css and (marketing)/marketing.css. Re-sync from
+ * upstream is deliberate/manual — update the pinned commit above when doing so.
  */
 
 @theme inline {

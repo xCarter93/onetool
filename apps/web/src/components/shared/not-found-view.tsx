@@ -1,10 +1,5 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
-
-const MotionLink = motion.create(Link);
 
 // Giant outlined "404" wordmark (from React Bits Pro 404-2), retinted to tokens.
 const NotFoundBackdrop = () => {
@@ -49,29 +44,21 @@ const NotFoundBackdrop = () => {
 	);
 };
 
-const entranceEase = [0.23, 1, 0.32, 1] as const;
+// CSS entrance keeps this a server component, so the root not-found ships no JS on every route.
+const ENTER =
+	"animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 ease-(--ease-out-quint) motion-reduce:animate-none";
 
 export default function NotFoundView() {
-	const reducedMotion = useReducedMotion();
-	const enter = (delay: number) =>
-		reducedMotion
-			? {}
-			: {
-					initial: { opacity: 0, y: 16 },
-					animate: { opacity: 1, y: 0 },
-					transition: { duration: 0.5, delay, ease: entranceEase },
-				};
-
 	return (
 		<main className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-background px-4 py-12 text-foreground sm:px-6 sm:py-16 lg:px-8">
 			<div className="pointer-events-none absolute inset-x-0 top-24 mx-auto h-32 max-w-350 opacity-[0.14] sm:top-1/2 sm:h-auto sm:-translate-y-1/2 dark:opacity-10">
 				<NotFoundBackdrop />
 			</div>
 
-			<MotionLink
+			{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load: the landing ships its own Tailwind sheet */}
+			<a
 				href="/"
-				{...enter(0)}
-				className="absolute top-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+				className={`${ENTER} absolute top-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary`}
 			>
 				{/* The wordmark asset already includes the mark. */}
 				<Image
@@ -83,41 +70,35 @@ export default function NotFoundView() {
 					priority
 					className="h-7 w-auto dark:invert dark:brightness-0"
 				/>
-			</MotionLink>
+			</a>
 
 			<div className="relative z-10 flex w-full max-w-xl flex-col items-center text-center">
-				<motion.h1
-					{...enter(0.08)}
-					className="text-4xl font-semibold tracking-[-0.02em] text-balance sm:text-5xl"
-				>
+				<h1 className={`${ENTER} delay-80 text-4xl font-semibold tracking-[-0.02em] text-balance sm:text-5xl`}>
 					Page not found
-				</motion.h1>
+				</h1>
 
-				<motion.p
-					{...enter(0.16)}
-					className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground text-pretty sm:text-base"
+				<p
+					className={`${ENTER} delay-160 mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground text-pretty sm:text-base`}
 				>
 					This page doesn&apos;t exist or may have moved. Check the address,
 					or head back home.
-				</motion.p>
+				</p>
 
-				<motion.div
-					{...enter(0.24)}
-					className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:gap-4"
-				>
-					<Link
+				<div className={`${ENTER} delay-240 mt-8 flex flex-col items-center gap-3 sm:flex-row sm:gap-4`}>
+					{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load: the landing ships its own Tailwind sheet */}
+					<a
 						href="/"
 						className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 					>
 						Back to homepage
-					</Link>
+					</a>
 					<Link
 						href="/help"
 						className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-background px-6 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 					>
 						Visit the help center
 					</Link>
-				</motion.div>
+				</div>
 			</div>
 		</main>
 	);

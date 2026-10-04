@@ -10,7 +10,8 @@ export function HelpHeader() {
 		<header className="sticky top-0 z-40 w-full border-b border-border bg-background">
 			<div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
 				<div className="flex min-w-0 items-center gap-3">
-					<Link
+					{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load: the landing ships its own Tailwind sheet */}
+					<a
 						href="/"
 						className="shrink-0 transition-opacity hover:opacity-80"
 					>
@@ -21,7 +22,7 @@ export function HelpHeader() {
 							height={140}
 							className="w-[120px] rounded-md dark:brightness-0 dark:invert sm:w-[140px]"
 						/>
-					</Link>
+					</a>
 					<span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
 					<Link
 						href="/help"

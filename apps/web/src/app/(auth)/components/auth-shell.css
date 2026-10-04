@@ -1,0 +1,137 @@
+.auth-shell .auth-theme-switcher {
+	width: 44px;
+	height: 44px;
+}
+
+.auth-shell .auth-legal-link {
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+}
+
+.auth-shell .auth-input,
+.auth-shell .auth-social,
+.auth-shell .auth-primary {
+	min-height: 48px;
+	font-size: 16px;
+}
+
+.auth-shell .auth-primary::after {
+	background-image: none;
+}
+
+.auth-shell .auth-primary {
+	background-image: none;
+	background-color: var(--primary);
+	color: var(--primary-fg);
+}
+
+.auth-shell .auth-input {
+	font-family: inherit;
+}
+
+.auth-shell .auth-clerk-link {
+	display: inline-flex;
+	min-height: 44px;
+	align-items: center;
+}
+
+.auth-skip-link {
+	position: absolute;
+	left: 16px;
+	top: 8px;
+	z-index: 50;
+	transform: translateY(-150%);
+	border-radius: var(--radius-sm);
+	background: var(--background);
+	color: var(--foreground);
+	padding: 12px 16px;
+}
+
+.auth-skip-link:focus {
+	transform: translateY(0);
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+
+.auth-loading {
+	min-height: 320px;
+	padding: 16px;
+}
+
+.auth-loading h1 {
+	font-size: 30px;
+	font-weight: 600;
+	letter-spacing: -0.025em;
+	text-align: center;
+}
+
+.auth-loading p {
+	margin-top: 12px;
+	font-size: 16px;
+	color: var(--muted-foreground);
+	text-align: center;
+}
+
+.auth-loading-outline {
+	margin-top: 32px;
+}
+
+.auth-loading-social,
+.auth-loading-input,
+.auth-loading-button {
+	height: 48px;
+	border-radius: var(--radius-sm);
+}
+
+.auth-loading-social,
+.auth-loading-input {
+	border: 1px solid var(--input);
+	background: var(--background);
+}
+
+.auth-loading-label {
+	width: 72px;
+	height: 12px;
+	margin-top: 40px;
+	margin-bottom: 8px;
+	border-radius: var(--radius-sm);
+	background: var(--secondary);
+}
+
+.auth-loading-button {
+	margin-top: 24px;
+	background: var(--secondary);
+}
+
+.auth-story {
+	background: var(--toast-bg);
+	color: var(--toast-fg);
+}
+
+.auth-story-image::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(to bottom, transparent 35%, var(--toast-bg) 100%);
+}
+
+.auth-story-sequence,
+.auth-story-row {
+	border-top: 1px solid
+		color-mix(in srgb, var(--toast-fg-muted) 30%, transparent);
+}
+
+.auth-story-status {
+	font-weight: 600;
+	color: var(--toast-fg);
+}
+
+.auth-story-row {
+	display: flex;
+	min-height: 52px;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	font-size: 14px;
+}

@@ -1,0 +1,9 @@
+.lp-workspace .lp-workspace-nav-sections { flex: 1; min-height: 0; overflow: auto; scrollbar-width: none; }
+.lp-workspace .lp-workspace-nav-section { margin-top: 4px; }
+.lp-workspace .lp-workspace-group { margin-bottom: 3px; line-height: 14px; }
+.lp-workspace .lp-workspace-nav > div { height: 24px; }
+.lp-workspace .lp-workspace-toolbar { position: relative; justify-content: flex-start; }
+.lp-workspace .lp-workspace-search { position: absolute; left: 50%; width: min(260px, 44%); margin: 0; transform: translateX(-50%); }
+.lp-workspace .lp-workspace-toolbar-actions { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.lp-workspace[data-collapsed] .lp-workspace-nav-section { margin-top: 4px; }
+.lp-workspace[data-collapsed] .lp-workspace-nav { padding-top: 0; }

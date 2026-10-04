@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Diagonal-stripe texture fills for categorical chart series (ReUI chart-5
  * pattern recipe). Renders one <pattern> per color; consumers reference them

@@ -1,0 +1,68 @@
+/* Chapter scenes sit in the margin beside the copy, with only their last 3rem under it. */
+.dc-landing { --lp-halftone-alpha: 0.16; }
+.dark .dc-landing { --lp-halftone-alpha: 0.3; }
+.dc-landing .lp-halftone[data-scene="map"] { --lp-halftone-alpha: 0.16; }
+.dc-landing .lp-halftone:is([data-scene="house"], [data-scene="van"], [data-scene="paid"], [data-scene="ahead"]) { --lp-halftone-alpha: 0.14; }
+.dark .dc-landing .lp-halftone:is([data-scene="house"], [data-scene="van"], [data-scene="paid"], [data-scene="ahead"]) { --lp-halftone-alpha: 0.22; }
+.dc-landing .lp-halftone:is([data-scene="vans"], [data-scene="doorstep"]) { --lp-halftone-alpha: 0.4; }
+.dark .dc-landing .lp-halftone:is([data-scene="vans"], [data-scene="doorstep"]) { --lp-halftone-alpha: 0.3; }
+/* The hero lede and actions sit over the street, so it stays faint. */
+.dc-landing .lp-halftone[data-scene="street"] { --lp-halftone-alpha: 0.2; }
+.dark .dc-landing .lp-halftone[data-scene="street"] { --lp-halftone-alpha: 0.15; }
+.dc-landing .lp-halftone[data-scene="old-way"] { --lp-halftone-alpha: 0.34; }
+.dark .dc-landing .lp-halftone[data-scene="old-way"] { --lp-halftone-alpha: 0.26; }
+
+.lp-halftone { pointer-events: none; opacity: var(--lp-halftone-alpha); }
+.lp-halftone picture { display: contents; }
+/* Chapter bands keep the subject in the art's top right; cover trims the faded left or bottom. */
+.lp-halftone img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 100% 0; }
+.lp-halftone[data-scene="old-way"] img { object-position: 50% 50%; }
+@media (max-width: 1279px) {
+	/* The stacked band spans the viewport; the gutter inset ends the pile at the content edge, inside the page rail. */
+	.lp-halftone[data-scene="old-way"] img { object-position: right var(--lp-gutter) top 50%; }
+}
+/* Scene art is baked as black marks. */
+.dark .lp-halftone img { filter: invert(1); }
+.lp-halftone[data-scene="map"]::before {
+	content: url("/landing/halftone/map.webp");
+	position: absolute;
+	top: 0;
+	left: 50%;
+	translate: -50% 0;
+	image-rendering: pixelated;
+}
+@media (max-width: 1023px) {
+	.lp-halftone[data-scene="map"]::before { content: url("/landing/halftone/map-1024.webp"); }
+}
+
+/* The base rule is the developed state, so no support, reduced motion and "Pause animations" all show it. */
+@keyframes lp-halftone-develop {
+	from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+	to { -webkit-mask-position: 0 0; mask-position: 0 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	/* view() tracks the nearest scroll container: an overflow:hidden ancestor would freeze this; use overflow:clip. */
+	@supports (animation-timeline: view()) {
+		.dc-landing:not([data-paused]) .lp-halftone[data-reveal] img {
+			-webkit-mask: linear-gradient(to right, black 40%, transparent 60%) 0 0 / 250% 100% no-repeat;
+			mask: linear-gradient(to right, black 40%, transparent 60%) 0 0 / 250% 100% no-repeat;
+			animation: lp-halftone-develop linear both;
+			animation-timeline: view();
+			animation-range: entry 0% cover 40%;
+		}
+		/* The stacked band sits at the section's foot: develop while it enters, so it is whole once fully in view. */
+		@media (max-width: 1279px) {
+			.dc-landing:not([data-paused]) .lp-halftone[data-reveal] img { animation-range: entry 0% entry 100%; }
+		}
+	}
+}
+
+/* Generated drawings: the street behind the hero's lede column, the vans in the pricing label head, the doorstep under the FAQ's demo box. */
+.lp-hero-art, .lp-pricing-art, .lp-faq-art { display: none; }
+@media (min-width: 1024px) {
+	.lp-hero-art { position: absolute; z-index: -1; top: clamp(24px, 3vw, 56px); right: 0; display: block; width: min(50vw, 880px); aspect-ratio: 3072 / 1317; }
+	.lp-faq-art { display: block; width: 22rem; aspect-ratio: 1536 / 1032; margin-top: 40px; }
+}
+@media (min-width: 768px) {
+	.lp-pricing-art { display: block; width: min(100%, 30rem); aspect-ratio: 2048 / 878; margin-bottom: 12px; }
+}

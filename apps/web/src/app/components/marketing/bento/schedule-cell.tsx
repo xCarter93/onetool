@@ -1,277 +1,200 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
-import { CalendarPlus } from "lucide-react";
-import { StatusBadge } from "@/components/domain/status-badge";
-import { BentoCard } from "./bento-card";
-import { BENTO_COPY } from "./copy";
-const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-const hours = ["7", "8", "9", "10", "11", "12"];
-type Visit = {
-	id: string;
-	day: number;
-	start: number;
-	span: number;
-	title: string;
-	crew: string[];
-	placed?: boolean;
-};
-const fixed: Visit[] = [
-	{ id: "gutters", day: 0, start: 1, span: 2, title: "Gutter clearing · Oak St", crew: ["MR"] },
-	{ id: "filter", day: 1, start: 0, span: 1, title: "Quarterly filter change", crew: ["PS"] },
-	{ id: "deep-clean", day: 3, start: 1, span: 3, title: "Deep clean, 3BR", crew: ["MR", "PS"] },
-	{ id: "irrigation", day: 4, start: 0, span: 2, title: "Irrigation startup", crew: ["PS"] },
-];
-const upNext: Visit[] = [
-	{ id: "hedges", day: 2, start: 3, span: 1, title: "Hedge trim · Rivera", crew: ["MR"], placed: true },
-	{ id: "estimate", day: 0, start: 4, span: 1, title: "Estimate walkthrough", crew: ["DN"], placed: true },
-	{
-		id: "windows",
-		day: 3,
-		start: 4,
-		span: 2,
-		title: "Window wash · Whitfield",
-		crew: ["PS", "MR"],
-		placed: true,
-	},
-];
-const ease = [0.22, 1, 0.36, 1] as const;
-const STEP_MS = 3200;
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { PanelBar } from "./feature";
+import { useMotionPaused } from "../motion-pause";
+import { useInView } from "../use-in-view";
+import { usePrefersReducedMotion } from "../use-reduced-motion";
+import { useCellLive } from "./use-cell-live";
 
-function Initials({ value, className }: { value: string; className: string }) {
+const DAYS = [
+	{ name: "Mon", date: 5, narrow: false },
+	{ name: "Tue", date: 6, narrow: true },
+	{ name: "Wed", date: 7, narrow: true },
+	{ name: "Thu", date: 8, narrow: true },
+	{ name: "Fri", date: 9, narrow: false },
+];
+const TODAY = 1;
+const HOURS = ["8 AM", "9 AM", "10 AM", "11 AM", "12 PM"];
+// 11:40 AM: inside Whitfield's fall cleanup, below its label.
+const NOW = 3.67;
+
+type Visit = { day: number; start: number; length: number; job: string; place: string };
+
+// The view stops at 1 PM like a scrolled calendar; y-clip (not hidden) lets the dragged block cross columns.
+const VISITS: Visit[] = [
+	{ day: 0, start: 2.5, length: 2, job: "Deep clean", place: "Lakeside Café" },
+	{ day: 1, start: 0, length: 1, job: "Weekly mow", place: "Kerr Road" },
+	{ day: 1, start: 1, length: 1.5, job: "Power wash", place: "Elm Street" },
+	{ day: 1, start: 3, length: 2.5, job: "Fall cleanup", place: "Whitfield" },
+	{ day: 2, start: 0, length: 1, job: "Leaf removal", place: "Maple Court" },
+	{ day: 2, start: 3, length: 1, job: "Hedge trim", place: "Sato" },
+	{ day: 2, start: 4.5, length: 1.5, job: "Power wash", place: "Brennan" },
+	{ day: 3, start: 3, length: 1.5, job: "Furnace service", place: "Novak" },
+	{ day: 3, start: 4.5, length: 1.5, job: "Window cleaning", place: "Patel Dental" },
+	{ day: 4, start: 1, length: 2, job: "Leaf removal", place: "Kerr Road" },
+];
+const MOVER: Visit = { day: 2, start: 1, length: 2, job: "Gutter clearing", place: "Dunmore" };
+
+const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+const EASE_IN_OUT = "cubic-bezier(0.77, 0, 0.175, 1)";
+// x is a percentage of the block, and a block is exactly one day column wide.
+// Web Animations, not CSS keyframes: landing.css pauses and strips CSS animations, and FADE must still run.
+const DRAG = {
+	duration: 1100,
+	keyframes: [
+		{ offset: 0, transform: "translateX(0%) scale(1)", easing: EASE_OUT },
+		{ offset: 0.2, transform: "translateX(0%) scale(1.04)", easing: EASE_IN_OUT },
+		{ offset: 0.78, transform: "translateX(100%) scale(1.04)", easing: EASE_OUT },
+		{ offset: 1, transform: "translateX(100%) scale(1)" },
+	] satisfies Keyframe[],
+};
+const FADE = {
+	duration: 600,
+	keyframes: [
+		{ offset: 0, transform: "translateX(0%)", opacity: 1, easing: "ease-in-out" },
+		{ offset: 0.4, transform: "translateX(0%)", opacity: 0, easing: "ease-in-out" },
+		{ offset: 0.42, transform: "translateX(100%)", opacity: 0, easing: "ease-in-out" },
+		{ offset: 1, transform: "translateX(100%)", opacity: 1 },
+	] satisfies Keyframe[],
+};
+
+function place(visit: Visit) {
+	return {
+		top: `calc(${(visit.start / HOURS.length) * 100}% + 2px)`,
+		height: `calc(${(visit.length / HOURS.length) * 100}% - 4px)`,
+	};
+}
+
+function Block({ visit, moved = false }: { visit: Visit; moved?: boolean }) {
+	// Less than an hour above the fold leaves room for one line, as calendars show short events.
+	const oneLine = HOURS.length - visit.start < 1;
 	return (
-		<span
-			className={`grid shrink-0 place-items-center rounded-full bg-(--accent-wash) font-semibold text-(--accent-ink) ${className}`}
+		<div
+			className={cn(
+				"h-full overflow-hidden rounded-md border bg-(--paper) px-1.5 py-0.5 transition-colors duration-300",
+				moved ? "border-(--accent-ink)" : "border-(--rule-2)"
+			)}
 		>
-			{value}
-		</span>
+			<p className={cn("text-2xs font-semibold leading-3.5 text-(--ink)", oneLine && "truncate")}>
+				{visit.job}
+				{oneLine ? <span className="font-normal text-(--ink-2)"> {visit.place}</span> : null}
+			</p>
+			{oneLine ? null : <p className="text-2xs leading-3.5 text-(--ink-2)">{visit.place}</p>}
+		</div>
 	);
 }
 
 export function ScheduleCell() {
-	const reduce = !!useReducedMotion();
 	const ref = useRef<HTMLDivElement>(null);
-	const inView = useInView(ref, { margin: "25% 0px" });
-	const [step, setStep] = useState(0);
-	const [hovered, setHovered] = useState<string | null>(null);
+	const moverRef = useRef<HTMLDivElement>(null);
+	const live = useCellLive(ref);
+	const seen = useInView(ref, { once: true, amount: 0.6 });
+	const reduce = usePrefersReducedMotion();
+	const paused = useMotionPaused();
+	const [moved, setMoved] = useState(false);
+	const settled = moved || (seen && paused);
+
 	useEffect(() => {
-		if (!inView || reduce) return;
-		const id = window.setInterval(
-			() => setStep((s) => (s + 1) % (upNext.length + 3)),
-			STEP_MS
-		);
-		return () => window.clearInterval(id);
-	}, [inView, reduce]);
-	const shown = reduce ? upNext.length : Math.min(step, upNext.length);
-	const visits = [...fixed, ...upNext.slice(0, shown)];
-	const pending = upNext[shown];
+		if (!live || !seen || moved) return;
+		const timer = window.setTimeout(() => setMoved(true), 1400);
+		return () => window.clearTimeout(timer);
+	}, [live, seen, moved]);
+
+	useEffect(() => {
+		if (!settled) return;
+		const plan = reduce || !moved ? FADE : DRAG;
+		const animation = moverRef.current?.animate(plan.keyframes, { duration: plan.duration, fill: "forwards" });
+		return () => animation?.cancel();
+	}, [settled, reduce, moved]);
+
 	return (
-		<BentoCard {...BENTO_COPY.schedule}>
-			<motion.div
-				ref={ref}
-				initial={{ opacity: 0, y: reduce ? 0 : 16 }}
-				whileInView={{ opacity: 1, y: 0 }}
-				viewport={{ once: true, amount: 0.3 }}
-				transition={{ duration: 0.7, ease }}
-				className="relative m-3 mb-0 flex flex-col overflow-hidden rounded-xl border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)"
-			>
-				<div className="flex items-center justify-between gap-3 border-b border-(--rule) px-3.5 py-2.5">
-					<div className="flex shrink-0 items-center gap-2">
-						<span className="text-[11px] font-semibold text-(--ink)">September</span>
-						<span className="hidden rounded-full border border-(--rule-2) px-2 py-0.5 text-[10px] text-(--ink-3) @sm:inline">
-							Week 36
+		<div ref={ref} className="flex h-full flex-col">
+			<PanelBar>
+				<p className="text-sm font-semibold text-(--ink)">
+					October 2026 <span className="ml-1.5 font-normal text-(--ink-2)">Week 41</span>
+				</p>
+				<span className="flex items-center gap-1 text-xs font-medium text-(--ink-2)">
+					<ChevronLeft aria-hidden="true" className="size-4" />
+					Today
+					<ChevronRight aria-hidden="true" className="size-4" />
+				</span>
+			</PanelBar>
+
+			<div className="grid flex-1 grid-cols-[40px_repeat(3,minmax(0,1fr))] grid-rows-[32px_minmax(0,1fr)] @xl:grid-cols-[48px_repeat(5,minmax(0,1fr))]">
+				<div />
+				{DAYS.map((day, index) => (
+					<div
+						key={day.name}
+						className={cn(
+							"flex items-center justify-center gap-1.5 border-l border-(--rule) text-xs",
+							!day.narrow && "hidden @xl:flex",
+							index === TODAY ? "font-semibold text-(--ink)" : "text-(--ink-2)"
+						)}
+					>
+						{day.name}
+						<span
+							className={cn(
+								"grid size-5 place-items-center rounded-full tabular-nums",
+								index === TODAY && "bg-(--accent-ink) text-(--sheet)"
+							)}
+						>
+							{day.date}
 						</span>
 					</div>
-					<AnimatePresence mode="wait">
-						{pending && !reduce && (
-							<motion.span
-								key={pending.id}
-								initial={{ opacity: 0, y: 4 }}
-								animate={{ opacity: 1, y: 0 }}
-								exit={{ opacity: 0, y: -4 }}
-								className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-(--rule-2) px-2 py-0.5 text-[10px] font-medium text-(--ink-2)"
-							>
-								<CalendarPlus className="h-3 w-3 shrink-0" />
-								<span className="truncate">
-									Adding {pending.title} to {days[pending.day]}
-								</span>
-							</motion.span>
+				))}
+
+				<div className="relative border-t border-(--rule)">
+					{HOURS.map((hour, index) => (
+						<span
+							key={hour}
+							className="absolute right-2 text-2xs leading-4 tabular-nums text-(--ink-2)"
+							style={{ top: `calc(${(index / HOURS.length) * 100}% + 2px)` }}
+						>
+							{hour}
+						</span>
+					))}
+				</div>
+
+				{DAYS.map((day, dayIndex) => (
+					<div
+						key={day.name}
+						className={cn(
+							"relative overflow-y-clip border-l border-t border-(--rule)",
+							!day.narrow && "hidden @xl:block",
+							dayIndex === TODAY && "bg-[color-mix(in_oklch,var(--accent-wash)_45%,transparent)]"
 						)}
-					</AnimatePresence>
-				</div>
-
-				<div className="flex flex-1 flex-col @2xl:flex-row">
-					<div className="min-w-0 @2xl:flex-1">
-						<div className="grid h-[318px] shrink-0 grid-cols-[28px_repeat(3,minmax(0,1fr))] grid-rows-[32px_22px_264px] @sm:grid-cols-[28px_repeat(5,minmax(0,1fr))] @2xl:grid-cols-[36px_repeat(5,minmax(0,1fr))]">
-							<div />
-							{days.map((day, index) => (
-								<div
-									key={day}
-									className={`${index >= 3 ? "hidden @sm:block" : ""} whitespace-nowrap border-l border-(--rule) px-1 py-1.5 text-center text-[10px] font-medium ${
-										index === 2 ? "text-(--ink)" : "text-(--ink-3)"
-									}`}
-								>
-									{day}
-									<span
-										className={`ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full tabular-nums ${
-											index === 2 ? "bg-(--ink) text-(--sheet)" : ""
-										}`}
-									>
-										{index + 2}
-									</span>
-								</div>
-							))}
-
-							<div />
-							<div className="col-span-3 px-1 py-0.5">
-								<div
-									className="flex h-full items-center rounded-md border border-(--rule-2) bg-(--paper) px-1.5 text-[9px] font-medium leading-none text-(--ink) @2xl:text-[10px]"
-									title="Spring cleanup · Whitfield, Mon to Wed"
-								>
-									<span className="truncate">Spring cleanup · Whitfield</span>
-								</div>
+					>
+						{HOURS.slice(1).map((hour, index) => (
+							<div
+								key={hour}
+								className="absolute inset-x-0 border-t border-(--rule)"
+								style={{ top: `${((index + 1) / HOURS.length) * 100}%` }}
+							/>
+						))}
+						{VISITS.filter((visit) => visit.day === dayIndex).map((visit) => (
+							<div key={visit.job + visit.place} className="absolute inset-x-1" style={place(visit)}>
+								<Block visit={visit} />
 							</div>
-							<div className="hidden @sm:block" />
-							<div className="hidden @sm:block" />
-
-							<div className="relative">
-								{hours.map((h, i) => (
-									<span
-										key={h}
-										className="absolute right-1.5 -translate-y-1/2 text-[9px] tabular-nums text-(--ink-3)"
-										style={{ top: `${(i / hours.length) * 100}%` }}
-									>
-										{h}
-									</span>
-								))}
+						))}
+						{dayIndex === MOVER.day && (
+							<div ref={moverRef} className="absolute inset-x-0 z-10 px-1" style={place(MOVER)}>
+								<Block visit={MOVER} moved={settled} />
 							</div>
-
-							{days.map((day, dayIndex) => (
-								<div
-									key={day}
-									className={`relative border-l border-(--rule) ${dayIndex >= 3 ? "hidden @sm:block" : ""}`}
-								>
-									{hours.map((h, i) => (
-										<div
-											key={h}
-											className="absolute inset-x-0 border-t border-dashed border-(--rule)"
-											style={{ top: `${(i / hours.length) * 100}%` }}
-										/>
-									))}
-									<AnimatePresence>
-										{visits
-											.filter((v) => v.day === dayIndex)
-											.map((visit) => {
-												const lit = hovered === visit.id;
-												return (
-													<motion.button
-														key={visit.id}
-														type="button"
-														layout
-														initial={
-															visit.placed
-																? {
-																		opacity: 0,
-																		scale: reduce ? 1 : 0.9,
-																		y: reduce ? 0 : -8,
-																	}
-																: false
-														}
-														animate={{ opacity: 1, scale: 1, y: 0 }}
-														exit={{ opacity: 0, scale: reduce ? 1 : 0.96 }}
-														transition={{ duration: 0.45, ease }}
-														onMouseEnter={() => setHovered(visit.id)}
-														onMouseLeave={() => setHovered(null)}
-														onFocus={() => setHovered(visit.id)}
-														onBlur={() => setHovered(null)}
-														onClick={() =>
-															setHovered((value) => (value === visit.id ? null : visit.id))
-														}
-														aria-label={`${visit.title}, ${day}, ${hours[visit.start]} o'clock`}
-														title={`${visit.title} · ${hours[visit.start]}:00`}
-														className={`absolute inset-x-1 flex cursor-pointer flex-col justify-between overflow-hidden rounded-lg border bg-(--paper) px-1.5 py-1 text-left transition-[box-shadow,border-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) ${
-															lit
-																? "z-10 border-(--ink) shadow-(--lp-shadow)"
-																: "border-(--rule-2)"
-														}`}
-														style={{
-															top: `calc(${(visit.start / hours.length) * 100}% + 2px)`,
-															height: `calc(${(visit.span / hours.length) * 100}% - 4px)`,
-														}}
-													>
-														<span className="truncate text-[9px] font-medium leading-none text-(--ink) @2xl:text-[10px]">
-															{visit.title}
-														</span>
-														<span className="flex -space-x-1">
-															{visit.crew.map((initials) => (
-																<Initials
-																	key={initials}
-																	value={initials}
-																	className="h-4 w-4 border border-(--sheet) text-[6px]"
-																/>
-															))}
-														</span>
-													</motion.button>
-												);
-											})}
-									</AnimatePresence>
-
-									{dayIndex === 2 && (
-										<div
-											className="pointer-events-none absolute inset-x-0 flex items-center"
-											style={{ top: `${(1.6 / hours.length) * 100}%` }}
-										>
-											<span className="h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-(--accent)" />
-											<span className="h-px flex-1 bg-(--accent)" />
-										</div>
-									)}
-								</div>
-							))}
-						</div>
+						)}
+						{dayIndex === TODAY && (
+							<div
+								className="absolute inset-x-0 flex items-center"
+								style={{ top: `${(NOW / HOURS.length) * 100}%` }}
+							>
+								<span className="-ml-1 size-2 rounded-full bg-(--accent-ink)" />
+								<span className="h-px flex-1 bg-(--accent-ink)" />
+							</div>
+						)}
 					</div>
-					<div className="border-t border-(--rule) p-4 @2xl:w-[248px] @2xl:shrink-0 @2xl:border-l @2xl:border-t-0">
-						<p className="text-[11px] font-medium text-(--ink-2)">Up Next</p>
-						<div className="mt-3 space-y-2">
-							{upNext.map((visit, index) => {
-								const booked = index < shown;
-								return (
-									<button
-										key={visit.id}
-										type="button"
-										onClick={() => {
-											setStep((value) => Math.max(value, index + 1));
-											setHovered(visit.id);
-										}}
-										onPointerEnter={() => setHovered(visit.id)}
-										onPointerLeave={() => setHovered(null)}
-										onFocus={() => setHovered(visit.id)}
-										onBlur={() => setHovered(null)}
-										aria-label={`${booked ? "Show" : "Schedule"} ${visit.title}`}
-										className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-(--rule-2) p-3 text-left transition-colors hover:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
-									>
-										<Initials value={visit.crew[0]} className="h-7 w-7 text-[10px]" />
-										<span className="min-w-0 flex-1">
-											<span className="block truncate text-[11px] font-medium text-(--ink-2)">
-												{visit.title}
-											</span>
-											<span className="mt-1 block text-[10px] text-(--ink-3)">
-												{days[visit.day]} · {hours[visit.start]}:00
-											</span>
-										</span>
-										{booked ? (
-											<StatusBadge status="scheduled" className="shrink-0">
-												Scheduled
-											</StatusBadge>
-										) : (
-											<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--rule-3)" />
-										)}
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				</div>
-			</motion.div>
-		</BentoCard>
+				))}
+			</div>
+		</div>
 	);
 }

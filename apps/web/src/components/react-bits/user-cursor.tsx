@@ -13,7 +13,9 @@ import {
 } from "react";
 import {
   AnimatePresence,
-  motion,
+  domAnimation,
+  LazyMotion,
+  m,
   useMotionValue,
   useSpring,
   useTransform,
@@ -460,78 +462,81 @@ const UserCursor = forwardRef<HTMLDivElement, UserCursorProps>(
         {children}
 
         <div style={layerStyle} aria-hidden>
-          <AnimatePresence>
-            {showCursor && (
-              <>
-                <motion.div
-                  key="user-cursor-arrow"
-                  className={cn(
-                    "absolute left-0 top-0 select-none will-change-transform",
-                    classNames?.cursor,
-                  )}
-                  style={{
-                    x: cursorX,
-                    y: cursorY,
-                    rotate: smoothArrowRotate,
-                  }}
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{
-                    opacity: 1,
-                    scale: pressed ? pressScale : 1,
-                  }}
-                  exit={{ opacity: 0, scale: 0.6 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <div className={cn("block", classNames?.arrow)}>
-                    {renderedArrow}
-                  </div>
-                </motion.div>
-
-                {showLabel && (
-                  <motion.div
-                    key="user-cursor-label"
+          {/* m + domAnimation keeps the full motion bundle (layout, drag) off the landing. */}
+          <LazyMotion features={domAnimation}>
+            <AnimatePresence>
+              {showCursor && (
+                <>
+                  <m.div
+                    key="user-cursor-arrow"
                     className={cn(
                       "absolute left-0 top-0 select-none will-change-transform",
-                      classNames?.label,
+                      classNames?.cursor,
                     )}
                     style={{
-                      x: labelX,
-                      y: labelY,
-                      rotate: smoothLabelRotate,
+                      x: cursorX,
+                      y: cursorY,
+                      rotate: smoothArrowRotate,
                     }}
-                    initial={{ opacity: 0, scale: 0.7 }}
+                    initial={{ opacity: 0, scale: 0.6 }}
                     animate={{
                       opacity: 1,
                       scale: pressed ? pressScale : 1,
                     }}
-                    exit={{ opacity: 0, scale: 0.7 }}
-                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    exit={{ opacity: 0, scale: 0.6 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    {label ?? (
-                      <div
-                        className={cn(
-                          "inline-flex items-center rounded-full font-medium leading-none shadow-[0_2px_10px_rgba(0,0,0,0.15)]",
-                          classNames?.labelText,
-                        )}
-                        style={
-                          {
-                            background: color,
-                            color: textColor,
-                            fontSize: `${size * 0.5}px`,
-                            paddingInline: `${size * 0.43}px`,
-                            paddingBlock: `${size * 0.18}px`,
-                            transform: `translate(${labelOffsetX}px, ${labelOffsetY}px)`,
-                          } as CSSProperties
-                        }
-                      >
-                        {name}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </>
-            )}
-          </AnimatePresence>
+                    <div className={cn("block", classNames?.arrow)}>
+                      {renderedArrow}
+                    </div>
+                  </m.div>
+
+                  {showLabel && (
+                    <m.div
+                      key="user-cursor-label"
+                      className={cn(
+                        "absolute left-0 top-0 select-none will-change-transform",
+                        classNames?.label,
+                      )}
+                      style={{
+                        x: labelX,
+                        y: labelY,
+                        rotate: smoothLabelRotate,
+                      }}
+                      initial={{ opacity: 0, scale: 0.7 }}
+                      animate={{
+                        opacity: 1,
+                        scale: pressed ? pressScale : 1,
+                      }}
+                      exit={{ opacity: 0, scale: 0.7 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      {label ?? (
+                        <div
+                          className={cn(
+                            "inline-flex items-center rounded-full font-medium leading-none shadow-[0_2px_10px_rgba(0,0,0,0.15)]",
+                            classNames?.labelText,
+                          )}
+                          style={
+                            {
+                              background: color,
+                              color: textColor,
+                              fontSize: `${size * 0.5}px`,
+                              paddingInline: `${size * 0.43}px`,
+                              paddingBlock: `${size * 0.18}px`,
+                              transform: `translate(${labelOffsetX}px, ${labelOffsetY}px)`,
+                            } as CSSProperties
+                          }
+                        >
+                          {name}
+                        </div>
+                      )}
+                    </m.div>
+                  )}
+                </>
+              )}
+            </AnimatePresence>
+          </LazyMotion>
         </div>
       </div>
     );

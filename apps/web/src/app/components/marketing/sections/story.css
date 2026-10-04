@@ -1,0 +1,159 @@
+.lp-old-way { position: relative; border-bottom: 1px solid var(--rule); }
+/* Clips the reveal here, not on the section root, which carries the page frame's seam marks. */
+.lp-old-way-art { position: absolute; inset: 0; overflow: clip; pointer-events: none; }
+.lp-old-way .lp-old-way-backdrop { position: absolute; inset: auto 0 0; height: 180px; }
+.lp-old-way-inner { position: relative; padding-top: clamp(48px, 6vw, 88px); padding-bottom: calc(clamp(48px, 6vw, 88px) + 150px); }
+.lp-old-way-inner > * { max-width: 40rem; }
+.lp-old-way-inner .lp-lede { color: var(--ink); }
+.lp-old-way-list { border-top: 1px solid var(--rule-2); }
+.lp-old-way-list > div { display: grid; gap: 2px 24px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+@media (min-width: 640px) { .lp-old-way-list > div { grid-template-columns: 8.5rem minmax(0, 1fr); align-items: baseline; } }
+.lp-old-way-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; border-radius: 4px; color: var(--accent-ink); font-size: 14px; font-weight: 500; white-space: nowrap; transition: color 160ms ease; }
+.lp-old-way-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+.lp-old-way-link:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+@media (max-width: 639px) { .lp-old-way-link { min-height: 44px; margin-block: -12px; } }
+/* Phones: the drawing would sit alone under the list, so it goes and the reserve with it. */
+@media (max-width: 639px) { .lp-old-way .lp-old-way-backdrop { display: none; } .lp-old-way-inner { padding-bottom: clamp(48px, 6vw, 88px); } }
+@media (min-width: 1280px) {
+	/* Starts past the 40rem text column so no copy sits on the dots. */
+	.lp-old-way .lp-old-way-backdrop { inset: 0 0 0 max(52%, calc(max(0px, (100% - 1560px) / 2) + var(--lp-gutter) + 40rem + 48px)); height: auto; }
+	.lp-old-way-inner { padding-bottom: clamp(48px, 6vw, 88px); }
+}
+
+/* clip, not hidden: keeps the sticky index, the top seam marks and the run map's view() timeline working. */
+.lp-story { position: relative; overflow-x: clip; overflow-y: visible; border-bottom: 1px solid var(--rule); }
+.lp-story-head { display: grid; gap: 16px; }
+.lp-story .lp-how-frame { width: 100%; max-width: 1120px; }
+.lp-story .lp-how-frame .lp-workspace-group { font-size: 10px; font-weight: 600; }
+
+/* Chapters: a sticky step index beside the four visible chapters. */
+.lp-chapters { margin-top: clamp(40px, 5vw, 72px); }
+.lp-chapters-body { display: grid; }
+.lp-chapter { padding-block: clamp(48px, 5vw, 64px); border-top: 1px solid var(--rule); }
+.lp-chapter:first-child { padding-top: 0; border-top: 0; }
+.lp-chapter:last-child { padding-bottom: 0; }
+.dc-landing .lp-chapter[id] { scroll-margin-top: 88px; }
+.lp-chapter-visual { margin-top: clamp(28px, 3.5vw, 44px); }
+.lp-chapter-support { margin-top: clamp(32px, 4vw, 48px); }
+.lp-chapter-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; margin-top: clamp(24px, 3vw, 36px); font-size: 14px; }
+.lp-chapter-links > span { color: var(--ink-3); }
+.lp-chapter-links a { display: inline-flex; align-items: center; gap: 3px; min-height: 32px; border-radius: 4px; color: var(--ink-2); font-weight: 500; transition: color 160ms ease; }
+.lp-chapter-links a:hover { color: var(--accent-ink); }
+.lp-chapter-links svg { color: var(--ink-3); transition: translate 200ms var(--lp-ease), color 160ms ease; }
+.lp-chapter-links a:hover svg { translate: 1px -1px; color: currentColor; }
+/* After the base rules above, so the phone values win. */
+@media (max-width: 639px) { .lp-chapter { padding-block: 40px; } .lp-chapter-links { margin-top: 20px; } .lp-chapter-links a { min-height: 44px; } }
+
+.lp-chapter-index ol { display: flex; margin: 0; padding: 0; list-style: none; }
+.lp-chapter-index a { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink-3); font-size: 15px; font-weight: 500; white-space: nowrap; transition: color 160ms ease; }
+.lp-chapter-index a > span { width: 1ch; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lp-chapter-index a:hover { color: var(--ink); }
+.lp-chapter-index a[aria-current] { color: var(--ink); }
+.lp-chapter-index a:focus-visible, .lp-chapter-links a:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.lp-chapter-art { display: none; }
+
+@media (min-width: 1024px) {
+	.lp-chapters { --lp-chapters-gap: clamp(32px, 4vw, 72px); isolation: isolate; display: grid; grid-template-columns: 12rem minmax(0, 1fr); column-gap: var(--lp-chapters-gap); align-items: start; }
+	.lp-chapter-index { position: sticky; top: 96px; }
+	/* A sticky index is a stacking context, so the drawing inside it can only go under the chapters by lifting them above the index. */
+	.lp-chapters-body { position: relative; z-index: 1; }
+	.lp-chapter-index ol { flex-direction: column; gap: 2px; border-left: 1px solid var(--rule-2); }
+	.lp-chapter-index a { margin-left: -1px; padding: 0 16px; }
+	.lp-chapter-index a[aria-current] { box-shadow: inset 2px 0 var(--accent-ink); }
+	.lp-chapter .lp-story-head { grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); gap: clamp(32px, 5vw, 80px); align-items: end; }
+	/* The current chapter's drawing sits under the step list and scrolls with it: bled off the viewport's left edge, ending 3rem past the content edge. */
+	/* The 2:1 box over a 3.2:1 band shows the band's right 62%, which is where each subject sits. */
+	/* --lp-art-rail is where the page rail (half a gutter outside the content) crosses the box; the mask keeps a clear channel around it. */
+	.lp-chapter-art {
+		--lp-art-w: 44rem;
+		--lp-art-rail: calc(var(--lp-art-w) - 15rem - var(--lp-chapters-gap) - var(--lp-gutter) / 2);
+		position: relative; z-index: -1; display: block; width: var(--lp-art-w); aspect-ratio: 2 / 1;
+		margin-top: 26px; margin-left: calc(var(--lp-chapters-gap) + 15rem - var(--lp-art-w));
+		pointer-events: none;
+		-webkit-mask: linear-gradient(to right, #000 calc(var(--lp-art-rail) - 8px), transparent 0, transparent calc(var(--lp-art-rail) + 9px), #000 0);
+		mask: linear-gradient(to right, #000 calc(var(--lp-art-rail) - 8px), transparent 0, transparent calc(var(--lp-art-rail) + 9px), #000 0);
+	}
+	.lp-chapter-art .lp-halftone { position: absolute; inset: 0; opacity: 0; transition: opacity 500ms ease; }
+	.lp-chapter-art[data-active="win"] [data-scene="house"],
+	.lp-chapter-art[data-active="run"] [data-scene="van"],
+	.lp-chapter-art[data-active="paid"] [data-scene="paid"],
+	.lp-chapter-art[data-active="ahead"] [data-scene="ahead"] { opacity: var(--lp-halftone-alpha); }
+}
+@media (max-width: 1023px) {
+	.lp-chapter-index { position: sticky; top: 64px; z-index: 2; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: blur(14px); overflow-x: auto; scrollbar-width: none; }
+	.lp-chapter-index ol { justify-content: space-between; gap: 0; }
+	.lp-chapter-index a { padding: 0 6px; font-size: 13px; }
+	.lp-chapter-index a > span { display: none; }
+	.lp-chapter-index a[aria-current] { box-shadow: inset 0 -2px var(--accent-ink); }
+	.lp-chapters-body { margin-top: clamp(32px, 5vw, 48px); }
+	.dc-landing .lp-chapter[id] { scroll-margin-top: 116px; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+	.lp-chapter-index { background: var(--paper); backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.lp-chapter-art .lp-halftone { transition: none; }
+}
+
+/* Run map (run-map.tsx): Crew A's route on the basemap, card and crew phone over it from 1024px. */
+.lp-run-stage { display: grid; gap: 16px; margin-top: clamp(28px, 3.5vw, 44px); }
+/* Edge to edge below 1024px; the art covers the box and the route sits mid-map, so any trim is map, never route. */
+.lp-run-map { position: relative; overflow: clip; aspect-ratio: 5 / 6; margin-inline: calc(-1 * var(--lp-gutter)); background: var(--sheet); }
+.lp-run-map::after { content: ""; position: absolute; inset: 0; border-block: 1px solid var(--rule-2); border-radius: inherit; pointer-events: none; }
+.lp-run-art { position: absolute; top: 0; left: 50%; height: 100%; aspect-ratio: 820 / 680; translate: -50% 0; }
+.lp-run-art picture { display: contents; }
+.lp-run-art :is(img, svg) { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lp-run-line { fill: none; stroke: var(--lp-route); stroke-width: 4px; vector-effect: non-scaling-stroke; stroke-opacity: .9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; }
+/* Bottom-right below 1024px, clear of the yard pin; from 1024px the phone covers that corner. */
+.lp-run-credit { position: absolute; right: 8px; bottom: 6px; padding: 1px 6px; border-radius: 4px; background: color-mix(in oklch, var(--sheet) 78%, transparent); color: var(--ink-3); font-size: 11px; }
+.lp-run-card { align-self: start; }
+.lp-run-drive { padding-top: 10px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 12px; }
+@media (min-width: 640px) {
+	.lp-run-map { aspect-ratio: 4 / 3; }
+	.lp-run-art { top: 50%; left: 0; width: 100%; height: auto; translate: 0 -50%; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+	.lp-run-stage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.lp-run-map { grid-column: 1 / -1; }
+}
+@media (min-width: 1024px) {
+	/* --run-s is one basemap pixel; the map's right edge runs to the page edge, at most 120px past the content edge. */
+	.lp-run {
+		container-type: inline-size;
+		--run-bleed: calc(var(--lp-gutter) + max(0px, (100vw - 1560px) / 2));
+		--run-edge: min(var(--run-bleed), 120px);
+		--run-h: min(100cqw / 1.5, 680px);
+		--run-s: calc(var(--run-h) / 680);
+		--run-phone-w: clamp(224px, 22cqw, 264px);
+	}
+	.lp-run-stage { display: block; position: relative; height: var(--run-h); }
+	.lp-run-map { position: absolute; top: 0; right: calc(-1 * var(--run-bleed)); bottom: 0; width: calc(820 * var(--run-s) + var(--run-bleed) - var(--run-edge)); aspect-ratio: auto; margin: 0; border-radius: 12px 0 0 12px; }
+	.lp-run-map::after { border: 1px solid var(--rule-2); border-right: 0; }
+	.lp-run-art { top: 0; left: 0; width: auto; height: 100%; translate: none; }
+	.lp-run-credit { right: auto; left: 8px; }
+	/* Its right edge sits at basemap x 120, clear of the route's west leg at 180. */
+	.lp-run-card { position: absolute; top: 24px; right: calc(700 * var(--run-s) - var(--run-edge)); width: 256px; box-shadow: var(--lp-shadow-lg); }
+	/* Top at basemap y 490, under stop 2's pin, so the phone never covers the route. */
+	.lp-run-phone { position: absolute; top: calc(410 * var(--run-s)); right: 0; width: var(--run-phone-w); }
+	/* The phone hangs below the map; the App Store line sits beside that overhang. */
+	.lp-run-app { min-height: calc(var(--run-phone-w) * 882 / 433 - 270 * var(--run-s) - 24px); padding-right: calc(var(--run-phone-w) + 32px); align-content: flex-start; }
+}
+@media (min-width: 1721px) {
+	/* The map now stops short of the page edge, so it fades into the panel. */
+	.lp-run-art { -webkit-mask: linear-gradient(to left, transparent, black 96px); mask: linear-gradient(to left, transparent, black 96px); }
+}
+
+/* The base rule is the drawn route, so no support, reduced motion and "Pause animations" all show it. */
+@keyframes lp-run-draw {
+	from { stroke-dashoffset: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	/* view() tracks the nearest scroll container: an overflow:hidden ancestor would freeze this; use overflow:clip. */
+	@supports (animation-timeline: view()) {
+		.dc-landing:not([data-paused]) .lp-run-line {
+			animation: lp-run-draw linear both;
+			animation-timeline: view();
+			animation-range: entry 10% cover 50%;
+		}
+	}
+}

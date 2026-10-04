@@ -1,0 +1,429 @@
+/* Shared by both Tailwind entries: globals.css (app) and (marketing)/marketing.css (landing). */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--font-outfit: var(--font-outfit);
+	--text-2xs: 0.6875rem;
+	--text-2xs--line-height: 1rem;
+	/* app-theme.css defines the shadow vars; outside its scope these resolve to none. */
+	--shadow-floating: var(--popover-shadow);
+	--shadow-overlay: var(--dialog-shadow);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-chart-6: var(--chart-6);
+	--color-chart-5: var(--chart-5);
+	--color-chart-4: var(--chart-4);
+	--color-chart-3: var(--chart-3);
+	--color-chart-2: var(--chart-2);
+	--color-chart-1: var(--chart-1);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
+	--color-border: var(--border);
+	--color-destructive: var(--destructive);
+	--color-danger: var(--danger);
+	--color-danger-foreground: var(--danger-fg);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-fg);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-fg);
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-fg);
+	--color-invert: var(--invert);
+	--color-invert-foreground: var(--invert-fg);
+	--color-toast: var(--toast-bg);
+	--color-toast-foreground: var(--toast-fg);
+	--color-toast-muted: var(--toast-fg-muted);
+	--color-toast-border: var(--toast-border);
+	--color-toast-accent-foreground: var(--toast-accent-fg);
+	--color-destructive-foreground: var(--danger-fg);
+	/* ReUI "focus" accent role — aliased to primary for OneTool */
+	--color-focus: var(--primary);
+	--color-focus-foreground: var(--primary-fg);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-accent: var(--accent);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-muted: var(--muted);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-secondary: var(--secondary);
+	--color-primary-foreground: var(--primary-fg);
+	--color-primary: var(--primary);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-popover: var(--popover);
+	--color-card-foreground: var(--card-foreground);
+	--color-card: var(--card);
+	--color-frame: var(--frame);
+	--color-card-primary: var(--card-primary);
+	--color-card-secondary: var(--card-secondary);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+/* `.light` rides along with `:root` so a subtree can pin the light theme inside
+   a dark document — the public community page does this when its owner has
+   chosen a colour mode (see lib/community-theme.ts). Custom properties resolve
+   at the nearest declaring ancestor, so the nested class wins. next-themes also
+   puts `.light` on <html>, where it is simply the same thing as `:root`. */
+/* React Flow stamps .light/.dark on its own container; keep the theme scopes off it
+   or every token inside the automations canvas re-resolves to this base palette. */
+:root,
+.light:not(.react-flow) {
+	--radius: 0.5rem;
+	/* Vertical room the bottom-anchored assistant dock (assistant-dock.tsx,
+	   ~3.25rem tall incl. its pb-3 inset) needs above it. Consumed by the
+	   automations editor's floating right panel bottom inset so it clears the
+	   dock; keep >= the dock height plus a little breathing room. */
+	--assistant-notch-clearance: 4.5rem;
+	/* Header notch geometry: ogee sweep width (x) and tab depth (y). Consumed
+	   by the .header-notch shape() path AND the component's side padding /
+	   heights (px-(--notch-sweep), h-(--notch-depth)) so the flat floor and
+	   the curve region stay in lockstep. */
+	--notch-sweep: 56px;
+	--notch-depth: 40px;
+	--bg: oklch(0.97 0 0);
+	--fg: oklch(0.141 0.005 285.823);
+	--background: var(--bg);
+	--foreground: var(--fg);
+	/* Tint of the workspace dot-grid; per-theme so each can be tuned alone. */
+	--canvas-dot: color-mix(in oklch, var(--foreground) 12%, transparent);
+	/* Ensure muted-foreground is defined for Tailwind text-muted-foreground */
+	--muted-foreground: var(--muted-fg);
+
+	--primary: rgb(0, 166, 244);
+	--primary-fg: oklch(1 0 0);
+
+	--secondary: oklch(0.92 0.004 286.32);
+	--secondary-fg: oklch(0.141 0.005 285.823);
+
+	--overlay: oklch(1 0 0);
+	--overlay-fg: oklch(0.141 0.005 285.823);
+
+	--accent: oklch(0.92 0.004 286.32);
+	--accent-fg: oklch(0.141 0.005 285.823);
+
+	--muted: oklch(0.967 0.001 286.375);
+	--muted-fg: oklch(0.552 0.016 285.938);
+
+	/* Semantic status roles; -fg = readable on tinted bg (ReUI convention), solids use text-white */
+	--success: oklch(0.596 0.145 163.225);
+	--success-fg: oklch(0.262 0.051 172.552);
+
+	--warning: oklch(0.828 0.189 84.429);
+	--warning-fg: oklch(0.279 0.077 45.635);
+
+	--danger: oklch(0.577 0.245 27.325);
+	--danger-fg: oklch(0.396 0.141 25.723);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.391 0.09 240.876);
+
+	--invert: oklch(0.21 0.006 285.885);
+	--invert-fg: oklch(0.985 0 0);
+
+	--border: oklch(0.911 0.006 286.286);
+	--input: oklch(0.871 0.006 286.286);
+	--ring: oklch(0.588 0.158 241.966);
+
+	--navbar: oklch(0.995 0 0);
+	--navbar-fg: oklch(0.141 0.005 285.823);
+
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-fg: oklch(0.141 0.005 285.823);
+	--sidebar-primary: oklch(0.685 0.169 237.323);
+	--sidebar-primary-fg: oklch(1 0 0);
+	--sidebar-accent: oklch(0.92 0.004 286.32);
+	--sidebar-accent-fg: oklch(0.141 0.005 285.823);
+	--sidebar-border: oklch(0.901 0.006 286.286);
+	--sidebar-ring: oklch(0.588 0.158 241.966);
+
+	--chart-1: oklch(0.588 0.158 241.966);
+	--chart-2: oklch(0.746 0.16 232.661);
+	--chart-3: oklch(0.828 0.111 230.318);
+	--chart-4: oklch(0.901 0.058 230.902);
+	--chart-5: oklch(0.951 0.026 236.824);
+	--chart-6: oklch(0.65 0.12 160);
+
+	--radius-lg: 0.5rem;
+	--radius-xs: calc(var(--radius-lg) * 0.5);
+	--radius-sm: calc(var(--radius-lg) * 0.75);
+	--radius-md: calc(var(--radius-lg) * 0.9);
+	--radius-xl: calc(var(--radius-lg) * 1.25);
+	--radius-2xl: calc(var(--radius-lg) * 1.5);
+	--radius-3xl: calc(var(--radius-lg) * 2);
+	--radius-4xl: calc(var(--radius-lg) * 3);
+	--sidebar-foreground: hsl(240 5.3% 26.1%);
+	--sidebar-primary-foreground: hsl(0 0% 98%);
+	--sidebar-accent-foreground: hsl(240 5.9% 10%);
+
+	/* Card colors - must be defined for bg-card to work */
+	--card: oklch(1 0 0); /* Pure white */
+	--card-foreground: oklch(0.141 0.005 285.823);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.141 0.005 285.823);
+	--frame: #ffffff;
+	--card-primary: oklch(0.82 0.12 230);
+	--card-secondary: oklch(0.94 0.04 230);
+	--destructive-foreground: var(--color-red-800);
+	--success-foreground: var(--color-emerald-900);
+	--info-foreground: var(--color-violet-900);
+	--warning-foreground: var(--color-yellow-900);
+	--invert-foreground: var(--color-zinc-50);
+
+	/* Empty-state illustrations. Aliases only — these resolve at use time, so
+	   .dark redefining the referenced tokens flips the artwork with no per-SVG work. */
+	--illo-surface: var(--muted);
+	--illo-line: var(--muted-foreground);
+	--illo-accent: var(--primary);
+	--illo-celebrate: var(--success);
+	/* Knockout fill for shapes that punch through to the surface behind. Override
+	   on a wrapper when an illustration sits on something other than a card. */
+	--illo-knockout: var(--card);
+}
+
+.dark:not(.react-flow) {
+	--bg: oklch(0.168 0.019 264.665); /* #0b0f17 */
+	--fg: oklch(0.985 0 0);
+	--background: var(--bg);
+	--foreground: var(--fg);
+	--canvas-dot: color-mix(in oklch, var(--foreground) 12%, transparent);
+	/* Dark mode mapping for muted-foreground */
+	--muted-foreground: var(--muted-fg);
+
+	--primary: oklch(0.685 0.169 237.323);
+	--primary-fg: oklch(1 0 0);
+
+	--secondary: oklch(0.244 0.006 286.033);
+	--secondary-fg: oklch(0.985 0 0);
+
+	--accent: oklch(0.274 0.006 286.033);
+	--accent-fg: oklch(0.985 0 0);
+
+	--muted: oklch(0.21 0.006 285.885);
+	--muted-fg: oklch(0.705 0.015 286.067);
+
+	--overlay: oklch(0.18 0.006 285.885);
+	--overlay-fg: oklch(0.985 0 0);
+
+	--success: oklch(0.596 0.145 163.225);
+	--success-fg: oklch(0.696 0.17 162.48);
+
+	--warning: oklch(0.828 0.189 84.429);
+	--warning-fg: oklch(0.769 0.188 70.08);
+
+	--danger: oklch(0.577 0.245 27.325);
+	--danger-fg: oklch(0.704 0.191 22.216);
+	--destructive: var(--danger);
+
+	--info: oklch(0.685 0.169 237.323);
+	--info-fg: oklch(0.746 0.16 232.661);
+
+	--invert: oklch(0.985 0 0);
+	--invert-fg: oklch(0.21 0.006 285.885);
+
+	--border: oklch(0.27 0.013 285.805);
+	--input: oklch(0.32 0.013 285.805);
+	--ring: oklch(0.588 0.158 241.966);
+
+	--navbar: oklch(0.19 0.006 285.885);
+	--navbar-fg: oklch(0.985 0 0);
+
+	--sidebar: oklch(0.21 0.006 285.885);
+	--sidebar-fg: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.685 0.169 237.323);
+	--sidebar-primary-fg: oklch(1 0 0);
+	--sidebar-accent: oklch(0.274 0.006 286.033);
+	--sidebar-accent-fg: oklch(0.985 0 0);
+	--sidebar-border: oklch(0.274 0.006 286.033);
+	--sidebar-ring: oklch(0.588 0.158 241.966);
+
+	--chart-1: oklch(0.5 0.134 242.749);
+	--chart-2: oklch(0.685 0.169 237.323);
+	--chart-3: oklch(0.746 0.16 232.661);
+	--chart-4: oklch(0.828 0.111 230.318);
+	--chart-5: oklch(0.901 0.058 230.902);
+	--chart-6: oklch(0.55 0.10 160);
+	--sidebar-foreground: hsl(240 4.8% 95.9%);
+	--sidebar-primary-foreground: hsl(0 0% 100%);
+	--sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+
+	/* Card colors for dark mode */
+	--card: oklch(0.15 0.005 285.823); /* Dark card background */
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.15 0.005 285.823);
+	--popover-foreground: oklch(0.985 0 0);
+	--frame: #000000;
+	--card-primary: oklch(0.45 0.12 230);
+	--card-secondary: oklch(0.22 0.05 230);
+	--destructive-foreground: var(--color-red-600);
+	--success-foreground: var(--color-emerald-600);
+	--info-foreground: var(--color-violet-600);
+	--warning-foreground: var(--color-yellow-600);
+	--invert-foreground: var(--color-zinc-950);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
+	}
+	/* Make placeholders slightly dimmer than regular input text globally */
+	input::placeholder,
+	textarea::placeholder {
+		color: var(--muted-foreground);
+	}
+  .maplibregl-popup-content {
+    @apply bg-transparent! shadow-none! p-0! rounded-none!;
+	}
+  .maplibregl-popup-tip {
+    @apply hidden!;
+	}
+}
+
+/* OneTool exception: primary actions keep the pre-rebuild "frosted blue" look
+   (translucent sky tint + soft ring + blur) instead of nova's solid fill.
+   App `components` layer intentionally beats reui-nova.css (`base` layer). */
+@layer components {
+	.style-nova .cn-button-variant-default {
+		@apply bg-primary/10 text-primary border-primary/30 font-semibold shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-primary/15 hover:text-primary/80 hover:border-primary/40 hover:shadow-md;
+	}
+}
+
+/* ============================================================================
+ * BLUEPRINT DRAFTING LANGUAGE — marketing surface only
+ *
+ * The landing page is drawn, not decorated: hairline construction guides,
+ * drafted object outlines, hatched regions, dimension strings, stamps. Two inks
+ * ever — zinc (object ink, derived from --foreground) and sky (construction
+ * ink). No third hue lives in artwork.
+ *
+ * These tokens must NEVER be used inside the workspace (CLAUDE.md rule). They
+ * are aliases + color-mix in the same style as the --illo-* block above: they
+ * resolve at use time, so .dark redefining the referenced tokens flips every
+ * drawing with no per-SVG work.
+ *
+ * Alphas are SPLIT per theme on purpose. The same alpha reads materially
+ * fainter on the #101828 dark paper than on the light zinc paper — reusing the
+ * light percentages makes every hairline vanish in dark mode.
+ * ========================================================================== */
+
+:root {
+	/* Paper. Knockout fill for shapes that punch through the lattice. Override
+	   on any wrapper that is not the page background (same footgun the
+	   --illo-knockout comment documents). */
+	--bp-paper: var(--background);
+
+	/* Construction guides — the faintest marks on the sheet. Guardrail: grid
+	   alpha never exceeds 15%. */
+	--bp-guide: color-mix(in oklch, var(--foreground) 8%, transparent);
+	--bp-guide-strong: color-mix(in oklch, var(--foreground) 18%, transparent);
+
+	/* Object ink. --bp-line is the hairline outline, --bp-line-strong is a
+	   "visible edge" line. Construction ink is always quieter than object ink.
+	   Light paper needs MORE separation than dark, not less: at 16% object ink
+	   sat only 2x over the 8% guides and plate edges drowned in the lattice. */
+	--bp-line: color-mix(in oklch, var(--foreground) 26%, transparent);
+	--bp-line-strong: color-mix(in oklch, var(--foreground) 44%, transparent);
+
+	/* Construction ink (sky). sky-600 clears 3:1 as a line on light paper; the
+	   brand #00A6F4 measures 2.71:1 there and is fills/tints only. --bp-anno is
+	   the ANNOTATION TEXT ink and must clear 4.5:1 — sky-700 does.
+	   Fallbacks are the literal Tailwind sky values already used elsewhere in
+	   this file (--ring is sky-600, --info is sky-500, --chart-2 is sky-400). */
+	--bp-ink: var(--color-sky-600, oklch(0.588 0.158 241.966));
+	--bp-anno: var(--color-sky-700, oklch(0.5 0.134 242.749));
+
+	/* Hatch marks a REGION (<=5% of a composition, <=3 patterns page-wide). */
+	--bp-hatch: color-mix(
+		in oklch,
+		var(--color-sky-600, oklch(0.588 0.158 241.966)) 10%,
+		transparent
+	);
+
+	/* One hairline weight per role; weight varies only to encode meaning —
+	   heavy = cut, med = visible edge, thin = annotation/construction. */
+	--lw-heavy: 1.5;
+	--lw-med: 1;
+	--lw-thin: 0.75;
+
+	/* Lattice geometry, shared by the CSS wallpaper utilities and lib/blueprint. */
+	--bp-grid-minor: 8px;
+	--bp-grid-major: 40px;
+	--bp-hatch-gap: 16px;
+
+	/* Marketing solid CTA ink — one value in both themes (AA-verified: white
+	   label 4.95:1; boundary 4.54:1 on light paper, 3.58:1 on dark). The brand
+	   #00A6F4 cannot carry a white label (2.71:1) and stays a tint/fill.
+	   Shared by cta-button and keyword-mark so the page has ONE solid sky. */
+	--cta-solid: #0275b8;
+	--cta-solid-hover: #0369a1;
+	--cta-solid-active: #075985;
+
+	/* The landing surface's TWO curves. Every hand-typed near-duplicate points
+	   here — a drawing that decelerates two different ways reads as two systems. */
+	--ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+.dark:not(.react-flow) {
+	/* Re-declared so a SCOPED .dark (e.g. the navbar flipping over a dark band)
+	   recomputes against its own --background — a var() chain declared only on
+	   :root freezes to the light value for descendants. */
+	--bp-paper: var(--background);
+	--bp-guide: color-mix(in oklch, var(--foreground) 9%, transparent);
+	--bp-guide-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
+	--bp-line: color-mix(in oklch, var(--foreground) 22%, transparent);
+	--bp-line-strong: color-mix(in oklch, var(--foreground) 46%, transparent);
+	/* On #101828 the brand sky becomes a legitimate ink (~7.2:1). */
+	--bp-ink: var(--color-sky-500, oklch(0.685 0.169 237.323));
+	--bp-anno: var(--color-sky-400, oklch(0.746 0.16 232.661));
+	--bp-hatch: color-mix(
+		in oklch,
+		var(--color-sky-500, oklch(0.685 0.169 237.323)) 12%,
+		transparent
+	);
+}
+
+/* One media block, real accessibility win, near-zero cost. */
+@media (prefers-contrast: more) {
+	:root {
+		--bp-guide: color-mix(in oklch, var(--foreground) 12%, transparent);
+		--bp-guide-strong: color-mix(in oklch, var(--foreground) 20%, transparent);
+		--bp-line: color-mix(in oklch, var(--foreground) 40%, transparent);
+		--bp-line-strong: color-mix(in oklch, var(--foreground) 60%, transparent);
+	}
+	.dark {
+		--bp-guide: color-mix(in oklch, var(--foreground) 16%, transparent);
+		--bp-guide-strong: color-mix(in oklch, var(--foreground) 26%, transparent);
+		--bp-line: color-mix(in oklch, var(--foreground) 55%, transparent);
+		--bp-line-strong: color-mix(in oklch, var(--foreground) 72%, transparent);
+	}
+}
+
+/* Surface the blueprint inks to Tailwind. v4 auto-generates stroke-*, fill-*,
+   text-* and border-* from any --color-* key, so `stroke-bp-guide` /
+   `fill-bp-hatch` / `text-bp-anno` all exist without a plugin. Prefer these
+   over inline style. Never lighten a stroke with `opacity` — opacity stays
+   free as an animation channel; alpha is baked into the token. */
+@theme inline {
+	--color-bp-paper: var(--bp-paper);
+	--color-bp-guide: var(--bp-guide);
+	--color-bp-guide-strong: var(--bp-guide-strong);
+	--color-bp-line: var(--bp-line);
+	--color-bp-line-strong: var(--bp-line-strong);
+	--color-bp-ink: var(--bp-ink);
+	--color-bp-anno: var(--bp-anno);
+	--color-bp-hatch: var(--bp-hatch);
+}

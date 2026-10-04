@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Badge, type BadgeProps } from "@/components/reui/badge";
-import { cn } from "@/lib/utils";
 
 /**
  * StatusBadge - the single status-pill component for the app.
@@ -119,7 +118,7 @@ export function StatusBadge({
 		<Badge
 			variant={ROLE_VARIANT[resolved][appearance]}
 			radius={radius}
-			className={cn("[.dc-landing_&]:rounded-full", className)}
+			className={className}
 			{...props}
 		/>
 	);

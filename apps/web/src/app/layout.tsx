@@ -2,13 +2,8 @@ import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { PostHogProvider } from "@/providers/PostHogProvider";
-import { ToastProvider } from "@/hooks/use-toast";
-import "./globals.css";
-import "./app-theme.css";
-// Portal-only font assets (Caveat for typed-signature canvas rendering).
-// Next.js 16 requires global CSS imports at the root layout. See Plan 14-03.
-import "@/styles/portal-fonts.css";
 
+// No CSS here: each route group's layout imports its Tailwind entry (globals.css, or (marketing)/marketing.css on the landing).
 const outfit = Outfit({
 	variable: "--font-outfit",
 	subsets: ["latin"],
@@ -31,11 +26,7 @@ export default function RootLayout({
 				    workspace) gets pageviews; AnalyticsIdentity stays in Clerk-wrapped
 				    layouts since identify() needs auth context. */}
 				<PostHogProvider>
-					<ThemeProvider>
-						<ToastProvider position="top-right" maxToasts={3}>
-							{children}
-						</ToastProvider>
-					</ThemeProvider>
+					<ThemeProvider>{children}</ThemeProvider>
 				</PostHogProvider>
 			</body>
 		</html>

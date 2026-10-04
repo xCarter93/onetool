@@ -1,8 +1,11 @@
+import "@/app/globals.css";
+import "@/app/app-theme.css";
 import type { ReactNode } from "react";
 import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 import ConvexClientProvider from "@/providers/ConvexClientProvider";
 import { DynamicTitle } from "@/components/shared/dynamic-title";
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
+import { ToastProvider } from "@/hooks/use-toast";
 import { SidebarWithHeader } from "@/components/layout/sidebar-with-header";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 import { CelebrationListener } from "@/components/celebrations/celebration-listener";
@@ -24,31 +27,33 @@ export default function WorkspaceLayout({
 	children: ReactNode;
 }) {
 	return (
-		<ClerkProviderWithTheme>
-			<ConvexClientProvider>
-				<DynamicTitle />
-				<ConfirmDialogProvider>
-					<div className="workspace-zone min-h-screen md:min-h-min">
-						<AnalyticsIdentity />
-						<CelebrationListener />
-					<VersionRefreshListener />
-						{/* No ambient blobs / grid overlays here: absolutely-positioned
-						    decorations paint over the static picture-frame background
-						    (but under the card and notches), tinting the frame unevenly. */}
-						<div className="relative bg-background min-h-screen">
-							<ScreenContextProvider>
-								<CurrentRecordProvider>
-									<CreateRecordProvider>
-										<SupportDialogProvider>
-											<SidebarWithHeader>{children}</SidebarWithHeader>
-										</SupportDialogProvider>
-									</CreateRecordProvider>
-								</CurrentRecordProvider>
-							</ScreenContextProvider>
+		<ToastProvider position="top-right" maxToasts={3}>
+			<ClerkProviderWithTheme>
+				<ConvexClientProvider>
+					<DynamicTitle />
+					<ConfirmDialogProvider>
+						<div className="workspace-zone min-h-screen md:min-h-min">
+							<AnalyticsIdentity />
+							<CelebrationListener />
+							<VersionRefreshListener />
+							{/* No ambient blobs / grid overlays here: absolutely-positioned
+							    decorations paint over the static picture-frame background
+							    (but under the card and notches), tinting the frame unevenly. */}
+							<div className="relative bg-background min-h-screen">
+								<ScreenContextProvider>
+									<CurrentRecordProvider>
+										<CreateRecordProvider>
+											<SupportDialogProvider>
+												<SidebarWithHeader>{children}</SidebarWithHeader>
+											</SupportDialogProvider>
+										</CreateRecordProvider>
+									</CurrentRecordProvider>
+								</ScreenContextProvider>
+							</div>
 						</div>
-					</div>
-				</ConfirmDialogProvider>
-			</ConvexClientProvider>
-		</ClerkProviderWithTheme>
+					</ConfirmDialogProvider>
+				</ConvexClientProvider>
+			</ClerkProviderWithTheme>
+		</ToastProvider>
 	);
 }

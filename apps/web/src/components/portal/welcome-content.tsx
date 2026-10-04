@@ -93,11 +93,11 @@ export function WelcomeContent({
 							Welcome back <span aria-hidden="true">👋</span>
 						</h1>
 						<p className="mt-2 text-[15px] text-muted-foreground">
-							Here&apos;s what&apos;s happening with your{" "}
+							Here&apos;s what&apos;s happening with{" "}
 							<span className="font-medium text-foreground">
 								{businessName}
-							</span>{" "}
-							service.
+							</span>
+							.
 						</p>
 					</div>
 				</div>

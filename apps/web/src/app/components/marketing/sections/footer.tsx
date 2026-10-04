@@ -1,30 +1,19 @@
-"use client";
-
-import type { Route } from "next";
-import dynamic from "next/dynamic";
+/* eslint-disable @next/next/no-html-link-for-pages -- plain anchors: a full load keeps the landing and app stylesheets apart and skips prefetching */
 import Image from "next/image";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useTheme } from "next-themes";
-import { usePrefersReducedMotion } from "../use-reduced-motion";
-
-const ParticleText = dynamic(
-	() => import("@/components/react-bits/particle-text"),
-	{ ssr: false }
-);
+import { ArrowUp } from "lucide-react";
+import { FEATURES } from "../features";
 
 type FooterLink = { name: string; href: string };
 
+const PRODUCT_KEYS = ["clients", "projects", "quotes", "invoices", "mobile"];
+
 const COLUMNS: { label: string; items: FooterLink[] }[] = [
 	{
-		label: "Solutions",
-		items: [
-			{ name: "Client management", href: "/help/clients" },
-			{ name: "Project tracking", href: "/help/projects-and-tasks" },
-			{ name: "Quoting & invoicing", href: "/help/quotes" },
-			{ name: "Task scheduling", href: "/help/projects-and-tasks" },
-			{ name: "Mobile access", href: "/help/mobile-app" },
-		],
+		label: "Product",
+		items: FEATURES.filter((feature) => PRODUCT_KEYS.includes(feature.key)).map(({ label, href }) => ({
+			name: label,
+			href,
+		})),
 	},
 	{
 		label: "Resources",
@@ -51,7 +40,7 @@ const SOCIAL: {
 }[] = [
 	{
 		name: "Facebook",
-		href: "https://www.facebook.com/people/OneToolbiz/61586066428412/?mibextid=wwXIfr&rdid=Nsakx5TWeKAAhZev&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2F1FWQx8iUPt%2F%3Fmibextid%3DwwXIfr",
+		href: "https://www.facebook.com/people/OneToolbiz/61586066428412/",
 		icon: (props) => (
 			<svg fill="currentColor" viewBox="0 0 24 24" {...props}>
 				<path
@@ -64,7 +53,7 @@ const SOCIAL: {
 	},
 	{
 		name: "Instagram",
-		href: "https://www.instagram.com/onetool.biz?igsh=MWJiNzVyOTFjcTdtZw==",
+		href: "https://www.instagram.com/onetool.biz",
 		icon: (props) => (
 			<svg fill="currentColor" viewBox="0 0 24 24" {...props}>
 				<path
@@ -78,54 +67,7 @@ const SOCIAL: {
 ];
 
 const FOOTER_LINK =
-	"rounded-sm text-sm text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
-
-const LIGHT_COLORS = ["#d4d4d8", "#d4d4d8", "#a1a1aa", "#0284c7"];
-const DARK_COLORS = ["#3f3f46", "#3f3f46", "#52525b", "#00a6f4"];
-// Keep this stable so ParticleText does not reinitialize on every render.
-const MOUSE_CONTROLS = { enabled: true, radius: 130, strength: 4 };
-
-function ParticleWordmark() {
-	const { resolvedTheme } = useTheme();
-	const reduced = usePrefersReducedMotion();
-	const [fontFamily, setFontFamily] = useState<string | null>(null);
-
-	useEffect(() => {
-		const family = getComputedStyle(document.body).fontFamily;
-		let cancelled = false;
-		document.fonts.ready.then(() => {
-			if (!cancelled) setFontFamily(family);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	const ready = !reduced && fontFamily !== null;
-
-	return (
-		<div aria-hidden="true" className="mt-2 h-[clamp(110px,17vw,260px)] w-full">
-			{ready ? (
-				<ParticleText
-					text="OneTool"
-					colors={resolvedTheme === "dark" ? DARK_COLORS : LIGHT_COLORS}
-					fontFamily={fontFamily}
-					fontWeight={600}
-					fontSize={340}
-					particleSize={2}
-					particleGap={2}
-					ease={0.06}
-					friction={0.82}
-					mouseControls={MOUSE_CONTROLS}
-				/>
-			) : (
-				<p className="flex h-full select-none items-center justify-center text-[min(16vw,300px)] font-semibold leading-[0.78] tracking-[-0.05em] text-(--rule-2)">
-					OneTool
-				</p>
-			)}
-		</div>
-	);
-}
+	"inline-flex min-h-11 items-center rounded-sm text-sm text-(--ink-2) transition-colors hover:text-(--ink) pointer-fine:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 
 function FooterItem({ item }: { item: FooterLink }) {
 	if (!item.href.startsWith("/")) {
@@ -136,54 +78,44 @@ function FooterItem({ item }: { item: FooterLink }) {
 		);
 	}
 	return (
-		<Link href={item.href as Route} className={FOOTER_LINK}>
+		<a href={item.href} className={FOOTER_LINK}>
 			{item.name}
-		</Link>
+		</a>
 	);
 }
 
 export function MarketingFooter() {
 	return (
-		<footer className="relative px-[clamp(20px,4vw,40px)] pb-6 pt-[clamp(40px,5vw,72px)]">
-			<div className="mx-auto max-w-[1560px]">
-				<div
-					className="grid gap-[clamp(32px,5vw,80px)]"
-					style={{
-						gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))",
-					}}
-				>
+		<footer className="relative pb-6 pt-[clamp(40px,5vw,72px)]">
+			<div className="mx-auto max-w-[1560px] px-(--lp-gutter)">
+				<div className="grid gap-10 lg:grid-cols-[minmax(0,22rem)_minmax(0,42rem)] lg:justify-between lg:gap-x-[clamp(32px,5vw,80px)]">
 					<div className="grid max-w-[22rem] content-start gap-4">
-						<Link
+						<a
 							href="/"
 							aria-label="OneTool home"
-							className="justify-self-start rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
+							className="inline-flex items-center justify-self-start rounded-sm pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
 						>
 							<Image
-								src="/OneTool.png"
+								src="/OneTool-wordmark-sm.webp"
 								alt="OneTool"
-								width={150}
-								height={150}
-								className="h-auto w-[124px] dark:brightness-0 dark:invert"
+								width={512}
+								height={134}
+								className="h-auto w-[118px] dark:brightness-0 dark:invert"
 							/>
-						</Link>
-						<p className="text-[14.5px] leading-[1.65] text-(--ink-2)">
-							Clients, jobs, quotes, and payments together for the people doing the work.
+						</a>
+						<p className="text-sm leading-[1.65] text-(--ink-2)">
+							Quotes, schedules, invoices and card payments for cleaning, landscaping, HVAC and trade crews.
 						</p>
-						<a href="#top" className={`${FOOTER_LINK} justify-self-start`}>
-							Back to top <span aria-hidden="true">↑</span>
+						<a href="#top" className={`${FOOTER_LINK} gap-1.5 justify-self-start`}>
+							Back to top <ArrowUp aria-hidden="true" className="size-3.5" />
 						</a>
 					</div>
 
-					<nav
-						aria-label="Footer"
-						className="grid grid-cols-2 gap-x-12 gap-y-8 sm:grid-cols-3"
-					>
+					<nav aria-label="Footer" className="grid grid-cols-2 gap-x-12 gap-y-8 sm:grid-cols-3">
 						{COLUMNS.map((column) => (
 							<div key={column.label}>
-								<p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-(--ink-3)">
-									{column.label}
-								</p>
-								<ul className="grid gap-[11px]">
+								<p className="mb-4 text-2xs font-semibold uppercase tracking-[0.08em] text-(--ink-3)">{column.label}</p>
+								<ul className="grid gap-[11px] pointer-coarse:gap-0">
 									{column.items.map((item) => (
 										<li key={item.name}>
 											<FooterItem item={item} />
@@ -196,9 +128,7 @@ export function MarketingFooter() {
 				</div>
 
 				<div className="mt-[clamp(40px,5vw,72px)] flex flex-wrap items-center justify-between gap-[14px] border-t border-(--rule) pt-5">
-					<p className="text-[13.5px] text-(--ink-3)">
-						© {new Date().getFullYear()} OneTool. All rights reserved.
-					</p>
+					<p className="text-sm text-(--ink-3)">© {new Date().getFullYear()} OneTool. All rights reserved.</p>
 					{/* Offset the icon targets so the glyphs align with the rule. */}
 					<div className="-mx-2.5 flex gap-x-1">
 						{SOCIAL.map((item) => (
@@ -215,8 +145,6 @@ export function MarketingFooter() {
 						))}
 					</div>
 				</div>
-
-				<ParticleWordmark />
 			</div>
 		</footer>
 	);

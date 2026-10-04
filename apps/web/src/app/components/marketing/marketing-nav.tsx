@@ -1,39 +1,35 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import type { Route } from "next";
 import Image from "next/image";
-import Link from "next/link";
-import { SignInButton, Show } from "@clerk/nextjs";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { BookOpen, CircleHelp, LifeBuoy, Rocket } from "lucide-react";
+import { BookOpen, ChevronDown, CircleHelp, Compass, LifeBuoy, Menu, X } from "lucide-react";
+import { SecondaryButton } from "./buttons";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "./features";
-import { openReelLightbox } from "./reel-cta";
+import { usePrefersReducedMotion } from "./use-reduced-motion";
 
+// App routes use plain <a>, not Link: landing <-> app must be a full page load (separate Tailwind sheets).
 const LINKS = [
-	{ href: "#day", label: "The day" },
-	{ href: "#phone", label: "Mobile" },
-	{ href: "#try", label: "Try it" },
-	{ href: "#compare", label: "Compare" },
+	{ href: "#how", label: "How it works" },
 	{ href: "#pricing", label: "Pricing" },
+	{ href: "#compare", label: "Compare" },
 ];
 
 const LINK_CLASS =
-	"rounded-lg px-3 py-2 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
+	"inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) pointer-coarse:min-h-11";
 
 const FEATURE_COLUMNS = [FEATURES.slice(0, 5), FEATURES.slice(5, 9), FEATURES.slice(9)];
 
 const RESOURCE_ITEMS = [
 	{
 		icon: BookOpen,
-		label: "Help Center",
+		label: "Help center",
 		description: "Guides for every part of OneTool",
 		href: "/help",
 	},
 	{
-		icon: Rocket,
+		icon: Compass,
 		label: "Getting started",
 		description: "Set up OneTool step by step",
 		href: "/help/getting-started",
@@ -47,42 +43,59 @@ const RESOURCE_ITEMS = [
 	{
 		icon: LifeBuoy,
 		label: "Contact support",
-		description: "Email our team for a hand",
+		description: "support@onetool.biz",
 		href: "mailto:support@onetool.biz",
 	},
 ] as const;
 
 const LEGAL_ITEMS = [
-	{ label: "Terms of Service", href: "/terms-of-service" },
-	{ label: "Privacy Policy", href: "/privacy-policy" },
-	{ label: "Data Security", href: "/data-security" },
+	{ label: "Terms of service", href: "/terms-of-service" },
+	{ label: "Privacy policy", href: "/privacy-policy" },
+	{ label: "Data security", href: "/data-security" },
 ] as const;
 
-const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
-
-const NAV_UNDERLINE =
-	"pointer-events-none absolute inset-x-3 bottom-1 h-[2px] origin-left rounded-full bg-(--accent) transition-transform duration-300 ease-out";
-
 const PANEL_CLASS =
-	"rounded-lg border border-(--rule-2) bg-(--sheet) shadow-(--lp-shadow)";
+	"rounded-lg bg-(--sheet) shadow-[0_0_0_1px_var(--rule-2),var(--lp-shadow)]";
 const EYEBROW_CLASS =
-	"font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-(--ink-3)";
+	"text-2xs font-semibold uppercase tracking-[0.08em] text-(--ink-3)";
 const ROW_CLASS =
 	"flex items-start gap-3 rounded-md p-3 text-left transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 const FEATURE_ROW_CLASS =
-	"block rounded-md px-3 py-2.5 transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
+	"block rounded-md px-3 py-2.5 transition-colors hover:bg-(--paper) focus-visible:bg-(--paper) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) pointer-coarse:min-h-11";
+const MENU_ROW_CLASS =
+	"flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)";
 const TILE_CLASS =
 	"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-(--rule) bg-(--accent-wash) text-(--accent-ink)";
 
-function useFlyout<T extends HTMLElement>() {
+const focusFirstLink = (panelId: string) =>
+	document.getElementById(panelId)?.querySelector<HTMLElement>("a[href]")?.focus();
+
+function useFlyout() {
 	const [open, setOpen] = useState(false);
-	const triggerRef = useRef<T>(null);
+	const [instant, setInstant] = useState(false);
+	const boundaryRef = useRef<HTMLDivElement>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const focusFirstOnOpen = useRef(false);
 	const panelId = useId();
 
+	const close = () => setOpen(false);
+
+	useEffect(() => {
+		if (!open) return;
+		if (focusFirstOnOpen.current) {
+			focusFirstOnOpen.current = false;
+			focusFirstLink(panelId);
+		}
+		const closeOnOutsidePointer = (e: PointerEvent) => {
+			if (!boundaryRef.current?.contains(e.target as Node)) setOpen(false);
+		};
+		document.addEventListener("pointerdown", closeOnOutsidePointer);
+		return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+	}, [open, panelId]);
+
 	const boundaryProps = {
+		ref: boundaryRef,
 		className: "relative",
-		onMouseEnter: () => setOpen(true),
-		onMouseLeave: () => setOpen(false),
 		onKeyDown: (e: React.KeyboardEvent) => {
 			if (e.key === "Escape" && open) {
 				e.stopPropagation();
@@ -90,7 +103,6 @@ function useFlyout<T extends HTMLElement>() {
 				triggerRef.current?.focus();
 			}
 		},
-		// Moving focus outside the trigger/panel dismisses it.
 		onBlur: (e: React.FocusEvent) => {
 			if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
 				setOpen(false);
@@ -98,63 +110,96 @@ function useFlyout<T extends HTMLElement>() {
 		},
 	};
 
-	return { open, setOpen, triggerRef, panelId, boundaryProps };
+	const triggerProps = {
+		ref: triggerRef,
+		type: "button" as const,
+		"aria-expanded": open,
+		"aria-controls": panelId,
+		onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+			// The open gesture also decides the exit: keyboard-opened panels close instantly.
+			if (!open) setInstant(event.detail === 0);
+			setOpen((v) => !v);
+		},
+		onKeyDown: (e: React.KeyboardEvent) => {
+			if (e.key !== "ArrowDown") return;
+			e.preventDefault();
+			if (open) {
+				focusFirstLink(panelId);
+			} else {
+				setInstant(true);
+				focusFirstOnOpen.current = true;
+				setOpen(true);
+			}
+		},
+	};
+
+	return { open, instant, close, panelId, boundaryProps, triggerProps };
+}
+
+function FlyoutTrigger({ children, ...props }: React.ComponentProps<"button">) {
+	return (
+		<button
+			{...props}
+			className={cn(
+				LINK_CLASS,
+				"group inline-flex cursor-pointer items-center gap-1 aria-expanded:bg-(--rule) aria-expanded:text-(--ink)"
+			)}
+		>
+			{children}
+			<ChevronDown
+				aria-hidden="true"
+				size={14}
+				className="transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none"
+			/>
+		</button>
+	);
 }
 
 function FlyoutPanel({
 	open,
+	instant,
 	align,
 	children,
 }: {
 	open: boolean;
+	instant: boolean;
 	align: "left" | "right";
 	children: React.ReactNode;
 }) {
-	const reduced = useReducedMotion();
+	const reduced = usePrefersReducedMotion();
+	const still = instant || reduced;
+	const [present, setPresent] = useState(open);
+	// Stays mounted through the exit fade; transitionend unmounts it.
+	if (open !== present && (open || still)) setPresent(open);
+	if (!present) return null;
 
 	return (
-		<AnimatePresence>
-			{open && (
-				<motion.div
-					initial={reduced ? false : { opacity: 0, y: 12 }}
-					animate={{ opacity: 1, y: 0 }}
-					exit={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
-					transition={{ duration: reduced ? 0 : 0.25, ease: EASE_OUT_QUINT }}
-					className={cn(
-						"absolute top-full z-10 pt-3",
-						align === "left" ? "left-0" : "right-0"
-					)}
-				>
-					{children}
-				</motion.div>
+		<div
+			onTransitionEnd={(e) => {
+				if (!open && e.target === e.currentTarget && e.propertyName === "opacity") setPresent(false);
+			}}
+			className={cn(
+				"absolute top-full z-10 pt-3",
+				align === "left" ? "left-0" : "right-0",
+				// No transition classes at all when still: landing.css forces transition-property under reduced motion.
+				!still && "transition-[opacity,translate] ease-(--ease-out-quint)",
+				!still && (open ? "duration-200 starting:translate-y-3 starting:opacity-0" : "translate-y-3 opacity-0 duration-150")
 			)}
-		</AnimatePresence>
+		>
+			{children}
+		</div>
 	);
 }
 
 function FeaturesFlyout() {
-	const { open, setOpen, triggerRef, panelId, boundaryProps } =
-		useFlyout<HTMLAnchorElement>();
+	const { open, instant, close, panelId, boundaryProps, triggerProps } = useFlyout();
 
 	return (
 		<div {...boundaryProps}>
-			<a
-				ref={triggerRef}
-				href="#inside"
-				onClick={() => setOpen(false)}
-				onFocus={() => setOpen(true)}
-				aria-expanded={open}
-				aria-controls={panelId}
-				className={cn(LINK_CLASS, "relative inline-flex")}
-			>
+			<FlyoutTrigger {...triggerProps}>
 				Features
-				<span
-					aria-hidden="true"
-					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className={NAV_UNDERLINE}
-				/>
-			</a>
-			<FlyoutPanel open={open} align="left">
+			</FlyoutTrigger>
+			<FlyoutPanel open={open} instant={instant} align="left">
 				<div
 					id={panelId}
 					className={cn(PANEL_CLASS, "w-[min(47.5rem,calc(100vw-2.5rem))]")}
@@ -164,36 +209,23 @@ function FeaturesFlyout() {
 						{FEATURE_COLUMNS.map((column, i) => (
 							<div key={i}>
 								{column.map((item) => (
-									<Link
+									<a
 										key={item.key}
-										href={item.href as Route}
-										onClick={() => setOpen(false)}
+										href={item.href}
+										onClick={close}
 										className={FEATURE_ROW_CLASS}
 									>
-										<span className="block text-[14px] font-medium leading-5 text-(--ink)">
+										<span className="block text-sm font-medium leading-5 text-(--ink)">
 											{item.label}
 										</span>
-										<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
+										<span className="mt-0.5 block text-xs leading-[1.45] text-pretty text-(--ink-2)">
 											{item.description}
 										</span>
-									</Link>
+									</a>
 								))}
 							</div>
 						))}
 					</div>
-					<button
-						type="button"
-						onClick={() => {
-							setOpen(false);
-							openReelLightbox();
-						}}
-						className="flex w-full items-center justify-between rounded-b-lg border-t border-(--rule) px-5 py-3.5 text-left text-[14px] font-medium text-(--ink-2) transition-colors hover:bg-(--paper) hover:text-(--ink) focus-visible:outline-none focus-visible:bg-(--paper)"
-					>
-						Watch a job run through it
-						<span aria-hidden="true" className="text-(--accent-ink)">
-							→
-						</span>
-					</button>
 				</div>
 			</FlyoutPanel>
 		</div>
@@ -201,28 +233,14 @@ function FeaturesFlyout() {
 }
 
 function ResourcesFlyout() {
-	const { open, setOpen, triggerRef, panelId, boundaryProps } =
-		useFlyout<HTMLAnchorElement>();
+	const { open, instant, close, panelId, boundaryProps, triggerProps } = useFlyout();
 
 	return (
 		<div {...boundaryProps}>
-			<Link
-				ref={triggerRef}
-				href="/help"
-				onClick={() => setOpen(false)}
-				onFocus={() => setOpen(true)}
-				aria-expanded={open}
-				aria-controls={panelId}
-				className={cn(LINK_CLASS, "relative inline-flex")}
-			>
+			<FlyoutTrigger {...triggerProps}>
 				Resources
-				<span
-					aria-hidden="true"
-					style={{ transform: open ? "scaleX(1)" : "scaleX(0)" }}
-					className={NAV_UNDERLINE}
-				/>
-			</Link>
-			<FlyoutPanel open={open} align="right">
+			</FlyoutTrigger>
+			<FlyoutPanel open={open} instant={instant} align="right">
 				<div
 					id={panelId}
 					className={cn(
@@ -232,54 +250,38 @@ function ResourcesFlyout() {
 				>
 					<div>
 						<p className={cn(EYEBROW_CLASS, "px-3 pb-1 pt-2")}>Support</p>
-						{RESOURCE_ITEMS.map((item) => {
-							const inner = (
-								<>
-									<span className={TILE_CLASS}>
-										<item.icon size={16} aria-hidden="true" />
+						{RESOURCE_ITEMS.map((item) => (
+							<a
+								key={item.label}
+								href={item.href}
+								onClick={close}
+								className={ROW_CLASS}
+							>
+								<span className={TILE_CLASS}>
+									<item.icon size={16} aria-hidden="true" />
+								</span>
+								<span className="min-w-0">
+									<span className="block text-sm font-medium leading-5 text-(--ink)">
+										{item.label}
 									</span>
-									<span className="min-w-0">
-										<span className="block text-[14px] font-medium leading-5 text-(--ink)">
-											{item.label}
-										</span>
-										<span className="mt-0.5 block text-[12.5px] leading-[1.45] text-(--ink-2)">
-											{item.description}
-										</span>
+									<span className="mt-0.5 block text-xs leading-[1.45] text-pretty text-(--ink-2)">
+										{item.description}
 									</span>
-								</>
-							);
-							return item.href.startsWith("/") ? (
-								<Link
-									key={item.label}
-									href={item.href}
-									onClick={() => setOpen(false)}
-									className={ROW_CLASS}
-								>
-									{inner}
-								</Link>
-							) : (
-								<a
-									key={item.label}
-									href={item.href}
-									onClick={() => setOpen(false)}
-									className={ROW_CLASS}
-								>
-									{inner}
-								</a>
-							);
-						})}
+								</span>
+							</a>
+						))}
 					</div>
 					<div className="border-l border-(--rule) pl-4">
 						<p className={cn(EYEBROW_CLASS, "pb-1 pt-2")}>Legal</p>
 						{LEGAL_ITEMS.map((item) => (
-							<Link
+							<a
 								key={item.label}
 								href={item.href}
-								onClick={() => setOpen(false)}
-								className="block rounded-md py-2 pr-2 text-[14px] text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:text-(--ink)"
+								onClick={close}
+								className="flex items-center rounded-md py-2 pr-2 text-sm text-(--ink-2) transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:text-(--ink) focus-visible:ring-2 focus-visible:ring-(--accent-ink) pointer-coarse:min-h-11"
 							>
 								{item.label}
-							</Link>
+							</a>
 						))}
 					</div>
 				</div>
@@ -288,69 +290,11 @@ function ResourcesFlyout() {
 	);
 }
 
-export const LP_PRIMARY =
-	"inline-flex cursor-pointer items-center justify-center gap-[9px] rounded-md border font-semibold tracking-[-0.01em] " +
-	"border-[color-mix(in_srgb,var(--accent)_32%,transparent)] " +
-	"bg-[color-mix(in_srgb,var(--accent)_10%,var(--paper))] text-(--accent-ink) " +
-	"transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none " +
-	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] " +
-	"hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--paper))] " +
-	"active:bg-[color-mix(in_srgb,var(--accent)_22%,var(--paper))] " +
-	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper) " +
-	"disabled:pointer-events-none disabled:opacity-60";
-
-export const LP_SECONDARY =
-	"inline-flex cursor-pointer items-center justify-center gap-[9px] rounded-md border border-(--rule-2) bg-(--sheet) font-semibold text-(--ink) " +
-	"transition-[color,border-color] duration-200 motion-reduce:transition-none " +
-	"hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] hover:text-(--accent-ink) " +
-	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) focus-visible:ring-offset-2 focus-visible:ring-offset-(--paper)";
-
-export const LP_BUTTON_SIZE = {
-	sm: "h-[38px] rounded-md px-4 text-sm",
-	md: "h-[52px] px-[26px] text-[17px]",
-} as const;
-
-type ButtonProps = {
-	href: string;
-	size?: keyof typeof LP_BUTTON_SIZE;
-	className?: string;
-	children: React.ReactNode;
-};
-
-export function PrimaryButton({
-	href,
-	size = "md",
-	className,
-	children,
-}: ButtonProps) {
-	return (
-		// optional catch-all route; bare path isn't in the typed union
-		<Link href={href as Route} className={cn(LP_PRIMARY, LP_BUTTON_SIZE[size], className)}>
-			{children}
-		</Link>
-	);
-}
-
-export function SecondaryButton({
-	href,
-	size = "md",
-	className,
-	children,
-}: ButtonProps) {
-	return (
-		<a
-			href={href}
-			className={cn(LP_SECONDARY, LP_BUTTON_SIZE[size], className)}
-		>
-			{children}
-		</a>
-	);
-}
 
 export function MarketingNav() {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuTriggerRef = useRef<HTMLButtonElement>(null);
-
+	const headerRef = useRef<HTMLElement>(null);
 	useEffect(() => {
 		if (!menuOpen) return;
 		const previous = document.body.style.overflow;
@@ -365,27 +309,30 @@ export function MarketingNav() {
 	}, [menuOpen]);
 
 	return (
-		<header onKeyDown={(event) => {
+		// The observer corrects this server-rendered hero state after hydration.
+		<header ref={headerRef} data-menu-open={menuOpen ? "" : undefined} onKeyDown={(event) => {
 			if (event.key === "Escape" && menuOpen) {
 				setMenuOpen(false);
 				menuTriggerRef.current?.focus();
 			}
-		}} className="sticky top-0 z-[60] border-b border-(--rule) bg-[color-mix(in_srgb,var(--paper)_86%,transparent)] backdrop-blur-[14px] backdrop-saturate-[1.4]">
-			<div className="mx-auto flex h-16 max-w-[1560px] items-center justify-between gap-x-6 gap-y-2 px-[clamp(20px,4vw,40px)] py-2">
-				<Link
+		}} style={{ transition: "none" }} className="sticky top-0 z-40 border-b border-(--rule) bg-[color-mix(in_srgb,var(--paper)_94%,transparent)] backdrop-blur-[14px] backdrop-saturate-[1.4]">
+			<div className="mx-auto flex h-16 max-w-[1560px] items-center justify-between gap-x-6 gap-y-2 px-(--lp-gutter) py-2">
+				{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- plain anchor: no prefetch of the page we are already on */}
+				<a
 					href="/"
 					aria-label="OneTool home"
-					className="flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
+					className="flex shrink-0 items-center rounded-sm pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
 				>
 					<Image
-						src="/OneTool.png"
+						src="/OneTool-wordmark-sm.webp"
 						alt="OneTool"
-						width={150}
-						height={150}
+						width={512}
+						height={134}
+						sizes="126px"
 						priority
-						className="h-auto w-[124px] dark:brightness-0 dark:invert sm:w-[132px]"
+						className="lp-nav-logo h-auto w-[118px] dark:brightness-0 dark:invert sm:w-[126px]"
 					/>
-				</Link>
+				</a>
 
 				<nav aria-label="Primary" className="hidden items-center gap-0.5 xl:flex">
 					<FeaturesFlyout />
@@ -398,20 +345,14 @@ export function MarketingNav() {
 				</nav>
 
 				<div className="flex shrink-0 items-center gap-2.5">
-					<ThemeSwitcher />
-					<Show when="signed-out">
-						<SignInButton mode="modal" forceRedirectUrl="/home">
-							<button className={cn(LINK_CLASS, "hidden sm:inline-flex")}>Sign in</button>
-						</SignInButton>
-						<PrimaryButton href="/sign-up" size="sm">
-							Start free
-						</PrimaryButton>
-					</Show>
-					<Show when="signed-in">
-						<PrimaryButton href="/home" size="sm">
-							Open OneTool
-						</PrimaryButton>
-					</Show>
+					<ThemeSwitcher className="pointer-coarse:size-11" />
+					{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load, see note above LINKS */}
+					<a href="/sign-in" className={cn(LINK_CLASS, "hidden items-center pointer-coarse:min-h-11 sm:inline-flex")}>
+						Sign in
+					</a>
+					<SecondaryButton href="/sign-up" size="sm" className="pointer-coarse:min-h-11">
+						Start free
+					</SecondaryButton>
 
 
 					<button
@@ -423,22 +364,11 @@ export function MarketingNav() {
 						aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
 						className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink) xl:hidden"
 					>
-						<svg
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							strokeLinecap="round"
-							aria-hidden="true"
-						>
-							{menuOpen ? (
-								<path d="M6 6L18 18M18 6L6 18" />
-							) : (
-								<path d="M4 7H20M4 12H20M4 17H20" />
-							)}
-						</svg>
+						{menuOpen ? (
+							<X aria-hidden="true" size={20} />
+						) : (
+							<Menu aria-hidden="true" size={20} />
+						)}
 					</button>
 				</div>
 			</div>
@@ -448,18 +378,24 @@ export function MarketingNav() {
 				id="marketing-nav-panel"
 				inert={!menuOpen}
 				className={cn(
-					"grid overflow-hidden border-(--rule) transition-[grid-template-rows,opacity] duration-300 ease-(--lp-ease) xl:hidden",
+					"absolute inset-x-0 top-full grid overflow-hidden border-(--rule) bg-(--paper) transition-[grid-template-rows,opacity] duration-300 ease-(--lp-ease) xl:hidden",
 					menuOpen ? "grid-rows-[1fr] border-t opacity-100" : "grid-rows-[0fr] opacity-0"
 				)}
 			>
 				<div className="min-h-0 max-h-[calc(100dvh-4rem)] overflow-y-auto">
-					<nav aria-label="Primary mobile" className="space-y-1 px-4 py-3">
+					<nav aria-label="Primary mobile" className="space-y-1 px-[calc(var(--lp-gutter)-0.75rem)] py-3">
+						<div className="mb-2 border-b border-(--rule) pb-3 sm:hidden">
+							{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load, see note above LINKS */}
+							<a href="/sign-in" onClick={() => setMenuOpen(false)} className={MENU_ROW_CLASS}>
+								Sign in
+							</a>
+						</div>
 						{LINKS.map((link) => (
 							<a
 								key={link.href}
 								href={link.href}
 								onClick={() => setMenuOpen(false)}
-								className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
+								className={MENU_ROW_CLASS}
 							>
 								{link.label}
 							</a>
@@ -467,14 +403,14 @@ export function MarketingNav() {
 						<div className="mt-2 border-t border-(--rule) pt-3">
 							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Features</p>
 							{FEATURES.map((item) => (
-								<Link
+								<a
 									key={item.key}
-									href={item.href as Route}
+									href={item.href}
 									onClick={() => setMenuOpen(false)}
-									className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
+									className={MENU_ROW_CLASS}
 								>
 									{item.label}
-								</Link>
+								</a>
 							))}
 						</div>
 						<div className="mt-2 border-t border-(--rule) pt-3">
@@ -484,18 +420,11 @@ export function MarketingNav() {
 									key={item.label}
 									href={item.href}
 									onClick={() => setMenuOpen(false)}
-									className="block rounded-lg px-3 py-2.5 text-sm font-medium text-(--ink-2) transition-colors hover:bg-(--rule) hover:text-(--ink)"
+									className={MENU_ROW_CLASS}
 								>
 									{item.label}
 								</a>
 							))}
-						</div>
-						<div className="mt-2 flex items-center gap-2 border-t border-(--rule) pt-3 sm:hidden">
-							<Show when="signed-out">
-								<SignInButton mode="modal" forceRedirectUrl="/home">
-									<button className={LINK_CLASS}>Sign in</button>
-								</SignInButton>
-							</Show>
 						</div>
 					</nav>
 				</div>
