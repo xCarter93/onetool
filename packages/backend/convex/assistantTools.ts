@@ -1,4 +1,4 @@
-import { createTool } from "@convex-dev/agent";
+import { createTool, type ToolCtx } from "@convex-dev/agent";
 import {
 	HELP_CATEGORIES,
 	helpArticleMarkdown,
@@ -129,10 +129,19 @@ function dayEndMs(date: string) {
 	return Date.parse(`${date}T23:59:59.999Z`);
 }
 
-// Routing tools default to "today" in UTC — the org's date field is stored
-// UTC-midnight, same as tasks/projects.
-export function resolveDateMs(date?: string): number {
-	return dayStartMs(date ?? new Date().toISOString().slice(0, 10));
+// streamResponse sets orgToday (the org's local day, stored UTC-midnight like
+// tasks/projects) once, so the prompt and every tool call agree on "today".
+type AssistantToolCtx = ToolCtx & { orgToday?: number };
+
+function orgTodayMs(ctx: AssistantToolCtx): number {
+	if (ctx.orgToday === undefined) {
+		throw new Error("orgToday is missing from the assistant tool ctx");
+	}
+	return ctx.orgToday;
+}
+
+function resolveDateMs(ctx: AssistantToolCtx, date?: string): number {
+	return date ? dayStartMs(date) : orgTodayMs(ctx);
 }
 
 // Dates go to the model as ISO strings, never epoch ms — the LLM cannot do
@@ -794,14 +803,16 @@ export const getTasks = createTool({
 		endDate: isoDate.optional().describe("Only for scope=filtered"),
 	}),
 	execute: async (ctx, input): Promise<Capped<TaskItem>> => {
+		const today = input.scope === "filtered" ? undefined : orgTodayMs(ctx);
 		const tasks =
 			input.scope === "today"
-				? await ctx.runQuery(api.tasks.getToday, {})
+				? await ctx.runQuery(api.tasks.getToday, { today })
 				: input.scope === "overdue"
-					? await ctx.runQuery(api.tasks.getOverdue, {})
+					? await ctx.runQuery(api.tasks.getOverdue, { today })
 					: input.scope === "upcoming"
 						? await ctx.runQuery(api.tasks.getUpcoming, {
 								daysAhead: input.daysAhead,
+								today,
 							})
 						: await ctx.runQuery(api.tasks.list, {
 								status: input.status,
@@ -1753,8 +1764,9 @@ export const getRoute = createTool({
 		| { found: false; savedRouteNames: string[]; hint: string }
 	> => {
 		const routes = await ctx.runQuery(api.routes.list, {});
+		const dateMs = resolveDateMs(ctx, input.date);
 		const resolution = resolveRouteFromList(routes, {
-			date: resolveDateMs(input.date),
+			date: dateMs,
 			assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
 			savedRouteName: input.savedRouteName,
 		});
@@ -1764,7 +1776,7 @@ export const getRoute = createTool({
 		// return it — the user usually means "my route" whatever its assignee.
 		if (!input.savedRouteName) {
 			const sameDay = routes.filter(
-				(r) => r.kind === "daily" && r.date === resolveDateMs(input.date)
+				(r) => r.kind === "daily" && r.date === dateMs
 			);
 			if (sameDay.length === 1) {
 				return { found: true, route: shapeRoute(sameDay[0]) };
@@ -1807,7 +1819,7 @@ export const planRoute = createTool({
 			truncated?: number;
 		}>
 	> => {
-		const dateMs = resolveDateMs(input.date);
+		const dateMs = resolveDateMs(ctx, input.date);
 		const assigneeUserId = input.assigneeUserId as Id<"users"> | undefined;
 		try {
 			if (input.fromSavedRouteName) {
@@ -1884,7 +1896,7 @@ export const updateRoute = createTool({
 			const routes = await ctx.runQuery(api.routes.list, {});
 			const assigneeUserId = input.assigneeUserId as Id<"users"> | undefined;
 			const resolution = resolveRouteFromList(routes, {
-				date: resolveDateMs(input.date),
+				date: resolveDateMs(ctx, input.date),
 				assigneeUserId,
 			});
 			if (!resolution.found) {
@@ -1993,7 +2005,7 @@ export const optimizeRoute = createTool({
 		try {
 			const routes = await ctx.runQuery(api.routes.list, {});
 			const resolution = resolveRouteFromList(routes, {
-				date: resolveDateMs(input.date),
+				date: resolveDateMs(ctx, input.date),
 				assigneeUserId: input.assigneeUserId as Id<"users"> | undefined,
 				savedRouteName: input.savedRouteName,
 			});

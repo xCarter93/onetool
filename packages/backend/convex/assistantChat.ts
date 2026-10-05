@@ -25,6 +25,7 @@ import {
 } from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
 import { trackServerException } from "./lib/posthog";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import { rateLimiter } from "./rateLimits";
 
 /**
@@ -105,7 +106,11 @@ export const authorizeThread = internalQuery({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ userId: Id<"users">; distinctId: string }> => {
+	): Promise<{
+		userId: Id<"users">;
+		distinctId: string;
+		timezone: string | undefined;
+	}> => {
 		await requireFeature(ctx, "aiAssistant");
 		const user = await getCurrentUserOrThrow(ctx);
 		const orgId = await getCurrentUserOrgId(ctx);
@@ -125,9 +130,44 @@ export const authorizeThread = internalQuery({
 		) {
 			throw new Error("That message can no longer be regenerated. Send it again.");
 		}
-		return { userId: user._id, distinctId: user.externalId };
+		const org = await ctx.db.get(orgId);
+		return {
+			userId: user._id,
+			distinctId: user.externalId,
+			timezone: org?.timezone,
+		};
 	},
 });
+
+function localWallClock(now: number, timeZone: string) {
+	const parts = new Intl.DateTimeFormat("en-US", {
+		timeZone,
+		weekday: "long",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	}).formatToParts(now);
+	const get = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((p) => p.type === type)?.value;
+	return `${get("weekday")}, ${get("year")}-${get("month")}-${get("day")}, ${get("hour")}:${get("minute")}`;
+}
+
+// Relative dates ("tomorrow") must resolve against the org's local day, not
+// UTC — US evenings are already the next day in UTC.
+export function currentDatePrompt(now: number, timezone: string | undefined) {
+	let zone = timezone ?? "UTC";
+	let local: string;
+	try {
+		local = localWallClock(now, zone);
+	} catch {
+		zone = "UTC";
+		local = localWallClock(now, zone);
+	}
+	return `It is currently ${local} local time in the business's timezone (${zone}). Resolve "today", "tomorrow", and other relative dates from this local date. The current UTC instant is ${new Date(now).toISOString()} — use it only to compare against UTC event timestamps from tools, never to work out the calendar date.`;
+}
 
 // A user Stop (abortResponse) is not a failure — don't report or rethrow it.
 function isAbortError(error: unknown): boolean {
@@ -148,7 +188,7 @@ export const streamResponse = action({
 		// authorizeThread also enforces the plan gate and the metered-message
 		// pin — this action can be invoked directly with any saved
 		// promptMessageId, and each call costs a full LLM generation.
-		const { userId, distinctId } = await ctx.runQuery(
+		const { userId, distinctId, timezone } = await ctx.runQuery(
 			internal.assistantChat.authorizeThread,
 			{ threadId: args.threadId, promptMessageId: args.promptMessageId }
 		);
@@ -163,7 +203,12 @@ export const streamResponse = action({
 
 		// Per-call `system` overrides the agent's static instructions, letting us
 		// anchor relative dates ("this week", "overdue") to the real current date.
-		const today = new Date().toISOString();
+		const now = Date.now();
+		const datePrompt = currentDatePrompt(now, timezone);
+		const toolCtx = {
+			...ctx,
+			orgToday: localTodayUtcMidnight(now, timezone),
+		};
 		// Oversized context is dropped, not truncated — cut JSON is worse than none.
 		const screenBlock =
 			args.screenContext &&
@@ -177,11 +222,11 @@ export const streamResponse = action({
 		let streamFailure: string | undefined;
 		try {
 			await assistantAgent.streamText(
-				ctx,
+				toolCtx,
 				{ threadId: args.threadId, userId },
 				{
 					promptMessageId: args.promptMessageId,
-					system: `${INSTRUCTIONS}\n\nThe current date and time is ${today} (UTC).${screenBlock}`,
+					system: `${INSTRUCTIONS}\n\n${datePrompt}${screenBlock}`,
 					// No reasoningEffort here: gpt-5.4 chat-completions rejects
 					// reasoning_effort combined with function tools (400), and the
 					// 5.4 models already default to effort "none" — the fast path.
