@@ -25,6 +25,7 @@ import {
 } from "./lib/entitlements";
 import { userMutation, userQuery } from "./lib/factories";
 import { trackServerException } from "./lib/posthog";
+import { localTodayUtcMidnight } from "./lib/schedule";
 import { rateLimiter } from "./rateLimits";
 
 /**
@@ -202,7 +203,12 @@ export const streamResponse = action({
 
 		// Per-call `system` overrides the agent's static instructions, letting us
 		// anchor relative dates ("this week", "overdue") to the real current date.
-		const datePrompt = currentDatePrompt(Date.now(), timezone);
+		const now = Date.now();
+		const datePrompt = currentDatePrompt(now, timezone);
+		const toolCtx = {
+			...ctx,
+			orgToday: localTodayUtcMidnight(now, timezone),
+		};
 		// Oversized context is dropped, not truncated — cut JSON is worse than none.
 		const screenBlock =
 			args.screenContext &&
@@ -216,7 +222,7 @@ export const streamResponse = action({
 		let streamFailure: string | undefined;
 		try {
 			await assistantAgent.streamText(
-				ctx,
+				toolCtx,
 				{ threadId: args.threadId, userId },
 				{
 					promptMessageId: args.promptMessageId,

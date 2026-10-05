@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getFunctionName } from "convex/server";
 import { ConvexError } from "convex/values";
 import {
 	applyStopEdits,
@@ -11,7 +10,6 @@ import {
 	untrustedIfPublic,
 } from "./assistantTools";
 import { z } from "zod";
-import { api } from "./_generated/api";
 import { REPORT_ENTITY_TYPES } from "./lib/reportFields";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -197,9 +195,7 @@ describe("tools default to the org's local today", () => {
 
 	// 8:44 PM Sunday Oct 4 in New York is already Monday Oct 5 in UTC.
 	const EVENING_ET = Date.UTC(2026, 9, 5, 0, 44);
-	const isOrgGet = (ref: Parameters<typeof getFunctionName>[0]) =>
-		getFunctionName(ref) === getFunctionName(api.organizations.get);
-	const NEW_YORK_ORG = { timezone: "America/New_York" };
+	const NEW_YORK_TODAY = Date.UTC(2026, 9, 4);
 
 	it("getRoute picks the local day's route, not the UTC day's", async () => {
 		vi.useFakeTimers();
@@ -207,7 +203,7 @@ describe("tools default to the org's local today", () => {
 		const localToday = fakeRoute({
 			name: "Daily route — 2026-10-04",
 			kind: "daily",
-			date: Date.UTC(2026, 9, 4),
+			date: NEW_YORK_TODAY,
 		});
 		const utcToday = fakeRoute({
 			name: "Daily route — 2026-10-05",
@@ -215,8 +211,8 @@ describe("tools default to the org's local today", () => {
 			date: Date.UTC(2026, 9, 5),
 		});
 		const ctx = {
-			runQuery: async (ref: Parameters<typeof getFunctionName>[0]) =>
-				isOrgGet(ref) ? NEW_YORK_ORG : [localToday, utcToday],
+			orgToday: NEW_YORK_TODAY,
+			runQuery: async () => [localToday, utcToday],
 		};
 
 		await expect(
@@ -232,18 +228,15 @@ describe("tools default to the org's local today", () => {
 		vi.setSystemTime(EVENING_ET);
 		const taskQueryArgs: unknown[] = [];
 		const ctx = {
-			runQuery: async (
-				ref: Parameters<typeof getFunctionName>[0],
-				args: unknown
-			) => {
-				if (isOrgGet(ref)) return NEW_YORK_ORG;
+			orgToday: NEW_YORK_TODAY,
+			runQuery: async (_ref: unknown, args: unknown) => {
 				taskQueryArgs.push(args);
 				return [];
 			},
 		};
 
 		await invokeAsAgentRuntime(assistantTools.getTasks, ctx, { scope: "today" });
-		expect(taskQueryArgs).toEqual([{ today: Date.UTC(2026, 9, 4) }]);
+		expect(taskQueryArgs).toEqual([{ today: NEW_YORK_TODAY }]);
 	});
 });
 
