@@ -1,5 +1,6 @@
 import { Pressable, View, TextInput, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import { useReopenTabBarAtTop } from "@/lib/shell-chrome";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { useRouter } from "expo-router";
 import { useState, useMemo } from "react";
@@ -54,6 +55,7 @@ export default function ClientsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const reopenAtTop = useReopenTabBarAtTop();
 	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
@@ -185,6 +187,9 @@ export default function ClientsScreen({
 				</View>
 			) : (
 				<FlashList
+					contentInsetAdjustmentBehavior="automatic"
+					onScroll={reopenAtTop}
+					scrollEventThrottle={16}
 					data={visibleClients}
 					keyExtractor={(item) => item.id}
 					renderItem={renderClient}

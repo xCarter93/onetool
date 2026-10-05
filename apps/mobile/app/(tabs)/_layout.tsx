@@ -1,11 +1,14 @@
-import { Tabs, Redirect } from "expo-router";
+import { Redirect } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
 import type { Href } from "expo-router";
 import { WorkingSetPrefetcher } from "@/components/offline/working-set-prefetcher";
 import { useAuth, useOrganization, useOrganizationList } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { PhoneFrame } from "@/components/frame/phone-frame";
-import { frame } from "@/lib/theme";
+import { fontFamily, tokens } from "@/lib/theme";
+import { ShellAccessory } from "@/components/frame/context-tier";
+import { useTabBarMinimize } from "@/lib/shell-chrome";
 import { resolveAuthDestination, SETUP_ROUTE } from "@/lib/postAuthRouting";
 import { useDevice } from "@/lib/use-device";
 import { IpadShell } from "@/components/ipad/ipad-shell";
@@ -22,6 +25,7 @@ export default function TabLayout() {
   });
   const needsMetadata = useQuery(api.organizations.needsMetadataCompletion);
   const { device } = useDevice();
+  const minimizeBehavior = useTabBarMinimize();
 
   const dest = resolveAuthDestination({
     authLoaded: Boolean(authLoaded),
@@ -53,7 +57,7 @@ export default function TabLayout() {
   }
 
   // iPad branch (P26) — gated AFTER all auth redirects so the iPhone path below
-  // stays byte-identical (RESP-04). The shell replaces Tabs + FieldKitTabBar.
+  // stays untouched (RESP-04). The shell replaces the native tabs and frame.
   if (device === "ipad") {
     return (
       <>
@@ -66,16 +70,41 @@ export default function TabLayout() {
   return (
     <>
       <WorkingSetPrefetcher />
-      <Tabs
-        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: frame.canvas } }}
-        tabBar={() => null}
-        layout={(props) => <PhoneFrame {...props} />}
-      >
-        <Tabs.Screen name="(today)" options={{ title: "Today" }} />
-        <Tabs.Screen name="(work)" options={{ title: "Work" }} />
-        <Tabs.Screen name="(money)" options={{ title: "Money" }} />
-        <Tabs.Screen name="(routes)" options={{ title: "Routes" }} />
-      </Tabs>
+      <PhoneFrame>
+        <NativeTabs
+          tintColor={tokens.primary}
+          labelStyle={{ fontFamily: fontFamily.medium }}
+          minimizeBehavior={minimizeBehavior}
+        >
+          <NativeTabs.BottomAccessory>
+            <ShellAccessory />
+          </NativeTabs.BottomAccessory>
+          <NativeTabs.Trigger name="(today)">
+            <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf="calendar" />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="(work)">
+            <NativeTabs.Trigger.Label>Work</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: "briefcase", selected: "briefcase.fill" }} />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="(money)">
+            <NativeTabs.Trigger.Label>Money</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: "wallet.bifold", selected: "wallet.bifold.fill" }} />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="(routes)">
+            <NativeTabs.Trigger.Label>Routes</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon
+              sf={{
+                default: "point.topleft.down.to.point.bottomright.curvepath",
+                selected: "point.topleft.down.to.point.bottomright.curvepath.fill",
+              }}
+            />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="(search)" role="search">
+            <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+        </NativeTabs>
+      </PhoneFrame>
     </>
   );
 }

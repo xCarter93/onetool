@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import { useReopenTabBarAtTop } from "@/lib/shell-chrome";
 import { usePaginatedQuery } from "convex/react";
 import { useRouter, type Href } from "expo-router";
 import { Activity as ActivityIcon } from "lucide-react-native";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { fontFamily, useTokens } from "@/lib/theme";
-import { GUTTER, EmptyPanel, PageHeader, Panel, SectionLabel, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
+import { GUTTER, EmptyPanel, NOTCH_CLEARANCE, PageHeader, Panel, SectionLabel, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
 import { Button } from "@/components/ui";
 import { ActivityRow } from "@/components/activity/activity-row";
 import { groupByDay, type ActivityDaySection, type ActivityLink } from "@/lib/activity-feed";
@@ -53,6 +54,7 @@ export default function ActivityScreen({
 	selected?: RecordRef | null;
 } = {}) {
 	const t = useTokens();
+	const reopenAtTop = useReopenTabBarAtTop();
 	const router = useRouter();
 	const isPane = headerMode === "pane";
 	// Seed "now" once (lazy) — react-hooks/purity forbids Date.now() during render.
@@ -148,9 +150,12 @@ export default function ActivityScreen({
 			/>
 		);
 
+	// The list leads so UIKit can minimize the tab bar from it; the title rides in its header.
+	const headerInList = !isPane && status !== "LoadingFirstPage";
+
 	return (
 		<View style={styles.screen}>
-			{isPane ? null : (
+			{isPane || headerInList ? null : (
 				<View style={canvasHeader}>
 					<PageHeader title="Activity" />
 				</View>
@@ -161,12 +166,22 @@ export default function ActivityScreen({
 				</View>
 			) : (
 				<FlashList
+					contentInsetAdjustmentBehavior="automatic"
+					onScroll={reopenAtTop}
+					scrollEventThrottle={16}
 					data={days}
 					keyExtractor={(item) => `day-${item.dayStartMs}`}
 					renderItem={renderDay}
+					ListHeaderComponent={
+						headerInList ? (
+							<View style={styles.headerInList}>
+								<PageHeader title="Activity" />
+							</View>
+						) : null
+					}
 					contentContainerStyle={{
 						...styles.listContent,
-						paddingTop: 12,
+						paddingTop: headerInList ? NOTCH_CLEARANCE : 12,
 					}}
 					ItemSeparatorComponent={() => <View style={styles.daySpacer} />}
 					ListEmptyComponent={
@@ -190,6 +205,9 @@ const styles = StyleSheet.create({
 	listContent: {
 		paddingHorizontal: GUTTER,
 		paddingBottom: 32,
+	},
+	headerInList: {
+		marginBottom: 12,
 	},
 	day: {
 		gap: 8,

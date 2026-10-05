@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@onetool/backend/convex/_generated/api";
 import { fontFamily, useTokens } from "@/lib/theme";
 import { Avatar } from "@/components/ui";
-import { CanvasScroll, PageHeader, Panel, RecordRow, SectionLabel, CANVAS_HEADER as canvasHeader } from "@/components/canvas";
+import { CanvasScroll, PageHeader, Panel, RecordRow, SectionLabel } from "@/components/canvas";
 import { useRouter, type Href } from "expo-router";
 import {
 	Building,
@@ -271,14 +271,8 @@ export default function ProfileScreen({
 
 	return (
 		<View style={styles.screen}>
-			{isPane ? null : (
-				<View style={canvasHeader}>
-					<PageHeader title="Profile" />
-				</View>
-			)}
-			<CanvasScroll
-				contentContainerStyle={isPane ? styles.paneContent : { paddingTop: 12 }}
-			>
+			<CanvasScroll contentContainerStyle={isPane ? styles.paneContent : undefined}>
+				{isPane ? null : <PageHeader title="Profile" />}
 				<Panel>
 					<View style={styles.identity}>
 						<Avatar text={initials} imageUrl={user?.imageUrl} size={64} />

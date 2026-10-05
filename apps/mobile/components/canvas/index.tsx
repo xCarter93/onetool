@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui";
 import { NOTCH_CLEARANCE } from "@/components/frame/notch";
 import { fontFamily, frame, recordTint, type RecordKind, useTokens } from "@/lib/theme";
+import { useReopenTabBarAtTop } from "@/lib/shell-chrome";
 
 // Web workspace display components for screens inside the canvas
 // (workspace-theme.css: page header, panel, metrics, record tabs, stepper).
@@ -44,10 +45,18 @@ export const KIND_ICON: Record<RecordKind, LucideIcon> = {
 
 /** Scroll body for a canvas screen: 16px gutters, notch clearance, 32px foot. */
 export const CanvasScroll = React.forwardRef<ScrollView, ScrollViewProps>(
-	function CanvasScroll({ contentContainerStyle, ...rest }, ref) {
+	function CanvasScroll({ contentContainerStyle, onScroll, ...rest }, ref) {
+		const reopenAtTop = useReopenTabBarAtTop();
 		return (
 			<ScrollView
 				ref={ref}
+				onScroll={(e) => {
+					reopenAtTop(e);
+					onScroll?.(e);
+				}}
+				scrollEventThrottle={16}
+				// Clears the glass tab bar and accessory; RN defaults to "never".
+				contentInsetAdjustmentBehavior="automatic"
 				keyboardShouldPersistTaps="handled"
 				automaticallyAdjustKeyboardInsets
 				contentContainerStyle={[styles.scroll, contentContainerStyle]}
@@ -578,6 +587,8 @@ export function EmptyPanel({
 
 const styles = StyleSheet.create({
 	scroll: {
+		// At least viewport-tall, so the tab-bar inset always leaves room to scroll the bar back open.
+		flexGrow: 1,
 		paddingHorizontal: GUTTER,
 		paddingTop: NOTCH_CLEARANCE,
 		paddingBottom: 32,

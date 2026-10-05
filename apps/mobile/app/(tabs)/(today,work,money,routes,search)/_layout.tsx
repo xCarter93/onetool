@@ -9,6 +9,7 @@ export const unstable_settings = {
 	work: { anchor: "work" },
 	money: { anchor: "money" },
 	routes: { anchor: "routes" },
+	search: { anchor: "search" },
 };
 
 export default function TabStack() {

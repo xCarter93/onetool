@@ -18,7 +18,6 @@ import {
 	Text,
 	View,
 	type AccessibilityActionInfo,
-	type TextInput,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -26,6 +25,7 @@ import Swipeable, {
 	type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
 import {
+	Stack,
 	useFocusEffect,
 	useLocalSearchParams,
 	useRouter,
@@ -46,8 +46,7 @@ import {
 import { SearchField } from "@/components/work/search-field";
 import { formatCurrency } from "@/lib/format";
 import { getRecents, type RecentRecord } from "@/lib/recents";
-import { consumeSearchFocus } from "@/lib/search-focus";
-import { focusComposer, useScreenChrome } from "@/lib/shell-chrome";
+import { useScreenChrome, useReopenTabBarAtTop } from "@/lib/shell-chrome";
 import { useOrgToday } from "@/lib/use-org-today";
 import { sameRef, type RecordRef } from "@/lib/selection-context";
 import { useCachedQuery } from "@/lib/offline/useCachedQuery";
@@ -288,11 +287,11 @@ function FavoriteRow({
 	);
 }
 
-// headerMode/onSelect/selected/kind default off → the iPhone path (router.push,
-// the composer field owns search, no selected highlight, uncontrolled tabs). The
-// iPad shell renders this as a list pane: headerMode="pane" suppresses the
-// composer binding and keeps an in-pane search field (the shell mounts
-// PaneHeader above it), onSelect drives the detail pane via the shell selection
+// headerMode/onSelect/selected/kind default off → the iPhone Work tab (router.push,
+// browse only, no selected highlight, uncontrolled tabs). headerMode="search" is
+// the iPhone Search tab, searching from the native search bar. The iPad shell
+// renders this as a list pane: headerMode="pane" keeps an in-pane search field
+// (the shell mounts PaneHeader above it), onSelect drives the detail pane via the shell selection
 // instead of a route push, selected marks the row, and kind/onKindChange let the
 // shell drive the tabs (e.g. "View all projects").
 export default function WorkScreen({
@@ -302,7 +301,7 @@ export default function WorkScreen({
 	kind: kindProp,
 	onKindChange,
 }: {
-	headerMode?: "root" | "pane";
+	headerMode?: "root" | "pane" | "search";
 	onSelect?: (ref: RecordRef) => void;
 	selected?: RecordRef | null;
 	kind?: WorkChipKind | null;
@@ -311,6 +310,7 @@ export default function WorkScreen({
 	const t = useTokens();
 	const router = useRouter();
 	const isPane = headerMode === "pane";
+	const reopenAtTop = useReopenTabBarAtTop();
 	// Pane keeps the fade inset (the shell's light chrome dissolves into content).
 	// On iPhone the canvas notch needs its own clearance instead.
 	const listTop = 16;
@@ -344,36 +344,7 @@ export default function WorkScreen({
 		onKindChange ? onKindChange(next) : setLocalKind(next);
 	const orgToday = useOrgToday();
 
-	// ── Search field ────────────────────────────────────────────────────────
-	// On iPhone the frame's bottom composer IS the search input; publish the
-	// binding up to it. Never in a pane: iPad has no composer and Work is always
-	// mounted there, so a search binding would just sit unused.
-	useScreenChrome(
-		isPane
-			? null
-			: {
-					search: {
-						value: raw,
-						onChangeText: setRaw,
-						placeholder: "Search clients, quotes, invoices…",
-					},
-				},
-	);
-	// One-shot latch set by the header magnifier on the other tab roots. Focuses
-	// the composer field instead of a local input — Work no longer owns one.
-	const paneInputRef = useRef<TextInput | null>(null);
-	useFocusEffect(
-		useCallback(() => {
-			if (!consumeSearchFocus()) return;
-			if (isPane) {
-				const frame = requestAnimationFrame(() => paneInputRef.current?.focus());
-				return () => cancelAnimationFrame(frame);
-			}
-			// One frame of slack — focusing mid-transition drops the keyboard.
-			const frame = requestAnimationFrame(() => focusComposer());
-			return () => cancelAnimationFrame(frame);
-		}, [isPane]),
-	);
+	useScreenChrome(null);
 
 	// ── Data ────────────────────────────────────────────────────────────────
 	// Search is the primary path. Browse lists are LAZY — only the active tab's
@@ -765,27 +736,42 @@ export default function WorkScreen({
 		[],
 	);
 
+	// UIKit minimizes the tab bar from the first scroll view down the first-child chain, so on
+	// iPhone the list leads and the controls ride in its header.
+	const controlsInList = !isPane && !loading;
+	const controls = (
+		<View
+			style={[
+				styles.controls,
+				{ paddingTop: isPane ? 10 : headerMode === "search" ? 12 : NOTCH_CLEARANCE },
+				controlsInList && { paddingHorizontal: 0, marginBottom: listTop },
+			]}
+		>
+			{isPane ? (
+				<SearchField
+					value={raw}
+					onChangeText={setRaw}
+					placeholder="Search clients, quotes, invoices…"
+				/>
+			) : null}
+			<UnderlineTabs
+				tabs={tabs}
+				value={kind ?? "all"}
+				onChange={(v) => setKind(v === "all" ? null : v)}
+			/>
+		</View>
+	);
+
 	return (
 		<View style={styles.screen}>
-			{/* Controls stay pinned either way — a search-first surface must not
-			    scroll its own controls away. The pane keeps its own search field
-			    (iPad has no phone composer); the phone tab row is search-less, the
-			    composer owns that job instead. */}
-			<View style={[styles.controls, { paddingTop: isPane ? 10 : NOTCH_CLEARANCE }]}>
-				{isPane ? (
-					<SearchField
-						value={raw}
-						onChangeText={setRaw}
-						inputRef={paneInputRef}
-						placeholder="Search clients, quotes, invoices…"
-					/>
-				) : null}
-				<UnderlineTabs
-					tabs={tabs}
-					value={kind ?? "all"}
-					onChange={(v) => setKind(v === "all" ? null : v)}
+			{headerMode === "search" ? (
+				<Stack.SearchBar
+					placeholder="Search clients, quotes, invoices…"
+					onChangeText={(e) => setRaw(e.nativeEvent.text)}
+					hideNavigationBar={false}
 				/>
-			</View>
+			) : null}
+			{controlsInList ? null : controls}
 
 			{loading ? (
 				<View style={[styles.listContent, { paddingTop: listTop }]}>
@@ -832,13 +818,17 @@ export default function WorkScreen({
 				</View>
 			) : (
 				<FlashList
+					contentInsetAdjustmentBehavior="automatic"
+					onScroll={reopenAtTop}
+					scrollEventThrottle={16}
 					data={rows}
 					keyExtractor={(item) => item.key}
 					getItemType={(item) => item.type}
 					renderItem={renderRow}
+					ListHeaderComponent={controlsInList ? controls : null}
 					contentContainerStyle={{
 						...styles.listContent,
-						paddingTop: listTop,
+						paddingTop: controlsInList ? 0 : listTop,
 						paddingBottom: listBottom,
 					}}
 					// On by default in FlashList v2 — but the list re-keys wholesale
