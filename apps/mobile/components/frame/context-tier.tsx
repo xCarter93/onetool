@@ -165,28 +165,29 @@ function ActionTray({
 					</Text>
 				</Pressable>
 			) : null}
-			{inline
-				? null
-				: rest.slice(0, 2).map((a) => (
-						<Pressable
-							key={a.key}
-							onPress={() => press(a)}
-							accessibilityRole="button"
-							accessibilityLabel={a.label}
-							accessibilityState={{ disabled: !!a.disabledReason }}
-							hitSlop={4}
-							style={({ pressed }) => [
-								styles.ghost,
-								a.disabledReason ? styles.disabled : null,
-								pressed && styles.pressed,
-							]}
-						>
-							<a.icon size={16} color={t.ink} strokeWidth={2} />
-							<Text style={[styles.secondaryText, { color: t.ink }]} numberOfLines={1}>
-								{a.label}
-							</Text>
-						</Pressable>
-					))}
+			{/* Icon-only when inline: the overflow menu leaves these out, so they can't disappear. */}
+			{rest.slice(0, 2).map((a) => (
+				<Pressable
+					key={a.key}
+					onPress={() => press(a)}
+					accessibilityRole="button"
+					accessibilityLabel={a.label}
+					accessibilityState={{ disabled: !!a.disabledReason }}
+					hitSlop={4}
+					style={({ pressed }) => [
+						styles.ghost,
+						a.disabledReason ? styles.disabled : null,
+						pressed && styles.pressed,
+					]}
+				>
+					<a.icon size={16} color={t.ink} strokeWidth={2} />
+					{inline ? null : (
+						<Text style={[styles.secondaryText, { color: t.ink }]} numberOfLines={1}>
+							{a.label}
+						</Text>
+					)}
+				</Pressable>
+			))}
 			<AssistantButton onPress={onAssistant} />
 		</View>
 	);

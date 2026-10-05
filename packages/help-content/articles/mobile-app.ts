@@ -111,7 +111,7 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Anything you change offline is saved on the phone the moment you tap. A status line just above the search bar at the bottom of the screen (on iPad, at the bottom of the sidebar) shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
+						text: "Anything you change offline is saved on the phone the moment you tap. A status line under the header at the top of the screen (on iPad, at the bottom of the sidebar) shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
 					},
 					{
 						type: "paragraph",
