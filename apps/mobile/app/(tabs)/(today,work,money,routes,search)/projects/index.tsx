@@ -1,5 +1,6 @@
 import { Pressable, View, TextInput, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
+import { useReopenTabBarAtTop } from "@/lib/shell-chrome";
 import { api } from "@onetool/backend/convex/_generated/api";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { useRouter } from "expo-router";
@@ -48,6 +49,7 @@ export default function ProjectsScreen({
 } = {}) {
 	const router = useRouter();
 	const t = useTokens();
+	const reopenAtTop = useReopenTabBarAtTop();
 	const isPane = headerMode === "pane";
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filter, setFilter] = useState<FilterValue>("all");
@@ -193,6 +195,9 @@ export default function ProjectsScreen({
 				</View>
 			) : (
 				<FlashList
+					contentInsetAdjustmentBehavior="automatic"
+					onScroll={reopenAtTop}
+					scrollEventThrottle={16}
 					data={visibleProjects}
 					keyExtractor={(item) => item._id}
 					renderItem={renderProject}

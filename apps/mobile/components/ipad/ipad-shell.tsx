@@ -15,7 +15,7 @@ import {
 import { PadSidebar, type SidebarTab } from "@/components/ipad/pad-sidebar";
 import { IpadDock } from "@/components/ipad/ipad-dock";
 import { Notch, type NotchContent } from "@/components/frame/notch";
-import { useCreateItems } from "@/components/frame/phone-frame";
+import { useCreateItems } from "@/components/frame/context-tier";
 import {
 	isOverlayRoute,
 	isStackRoute,
@@ -32,10 +32,10 @@ import TodayScreen from "@/app/(tabs)/(today)/index";
 import WorkScreen from "@/app/(tabs)/(work)/work";
 import MoneyScreen from "@/app/(tabs)/(money)/money";
 import RoutesScreen from "@/app/(tabs)/(routes)/routes";
-import ActivityScreen from "@/app/(tabs)/(today,work,money,routes)/activity";
-import ProfileScreen from "@/app/(tabs)/(today,work,money,routes)/profile";
-import BusinessDetailsScreen from "@/app/(tabs)/(today,work,money,routes)/business-details";
-import RouteEditScreen from "@/app/(tabs)/(today,work,money,routes)/route-edit";
+import ActivityScreen from "@/app/(tabs)/(today,work,money,routes,search)/activity";
+import ProfileScreen from "@/app/(tabs)/(today,work,money,routes,search)/profile";
+import BusinessDetailsScreen from "@/app/(tabs)/(today,work,money,routes,search)/business-details";
+import RouteEditScreen from "@/app/(tabs)/(today,work,money,routes,search)/route-edit";
 import type { Id } from "@onetool/backend/convex/_generated/dataModel";
 import { AssistantHost } from "@/components/assistant/assistant-host";
 import {

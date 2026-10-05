@@ -1,13 +1,14 @@
-import React, { useEffect, useRef } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { Button, Host, Menu, RNHostView, Section } from "@expo/ui/swift-ui";
-import { Plus, Search, Sparkles, X } from "lucide-react-native";
-import { fontFamily, frame } from "@/lib/theme";
-import {
-	registerComposerInput,
-	type ComposerSearch,
-	type TrayAction,
-} from "@/lib/shell-chrome";
+import React, { useMemo } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { usePathname, useRouter, type Href } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { MenuView } from "@expo/ui/community/menu";
+import type { Button } from "@expo/ui/swift-ui";
+import { Plus, Sparkles } from "lucide-react-native";
+import { fontFamily, useTokens } from "@/lib/theme";
+import { runTrayAction, useFocusedChrome, type TrayAction } from "@/lib/shell-chrome";
+import { usePermissions } from "@/lib/use-permissions";
+import { useOnlineAction } from "@/lib/offline/hooks";
 
 export interface CreateMenuItem {
 	key: string;
@@ -16,154 +17,126 @@ export interface CreateMenuItem {
 	run: () => void;
 }
 
-function AssistantButton({ onPress }: { onPress: () => void }) {
+export function useCreateItems(): CreateMenuItem[] {
+	const router = useRouter();
+	const { can, isLoading } = usePermissions();
+	const onlineAction = useOnlineAction();
+	return useMemo(() => {
+		if (isLoading) return [];
+		const open = (label: string, href: string) => () =>
+			onlineAction(label, () => router.push(href as Href));
+		const items: CreateMenuItem[] = [];
+		// Quotes and projects need a client picked, which needs client access.
+		const canPickClient = can("clients", "view");
+		if (can("quotes", "modify") && canPickClient) {
+			items.push({ key: "quote", label: "New quote", symbol: "doc.text", run: open("New quote", "/quote/new") });
+		}
+		if (can("clients", "modify")) {
+			items.push({ key: "client", label: "New client", symbol: "building.2", run: open("New client", "/client/new") });
+		}
+		if (can("tasks", "modify")) {
+			items.push({ key: "task", label: "New task", symbol: "checklist", run: open("New task", "/tasks/form") });
+		}
+		if (can("projects", "modify") && canPickClient) {
+			items.push({ key: "project", label: "New project", symbol: "folder", run: open("New project", "/project/new") });
+		}
+		return items;
+	}, [can, isLoading, onlineAction, router]);
+}
+
+/**
+ * Glass strip above the native tab bar: assistant + create on tab roots, the
+ * focused record's action tray elsewhere. iOS renders two copies (regular and
+ * inline), so all state lives in the shell-chrome store.
+ */
+export function ShellAccessory() {
+	const router = useRouter();
+	const pathname = usePathname();
+	const createItems = useCreateItems();
+	const focused = useFocusedChrome();
+	const inline = NativeTabs.BottomAccessory.usePlacement() === "inline";
+	const openAssistant = () =>
+		router.push({ pathname: "/assistant" as never, params: { ctx: pathname } });
+
+	if (focused?.chrome.tray?.length) {
+		return (
+			<ActionTray
+				actions={focused.chrome.tray}
+				inline={inline}
+				onRun={(key) => runTrayAction(focused.key, key)}
+				onAssistant={openAssistant}
+			/>
+		);
+	}
+	return <Composer inline={inline} onAssistant={openAssistant} createItems={createItems} />;
+}
+
+function AssistantButton({ onPress, label }: { onPress: () => void; label?: string }) {
+	const t = useTokens();
 	return (
 		<Pressable
 			onPress={onPress}
 			accessibilityRole="button"
 			accessibilityLabel="Ask the assistant"
-			style={({ pressed }) => [styles.square, pressed && styles.pressed]}
+			hitSlop={6}
+			style={({ pressed }) => [styles.ghost, label ? styles.grow : null, pressed && styles.pressed]}
 		>
-			<Sparkles size={18} color={frame.railAccent} strokeWidth={2} />
+			<Sparkles size={18} color={t.primary} strokeWidth={2} />
+			{label ? (
+				<Text style={[styles.askText, { color: t.sub }]} numberOfLines={1}>
+					{label}
+				</Text>
+			) : null}
 		</Pressable>
 	);
 }
 
-function CreateButton({ items }: { items: CreateMenuItem[] }) {
+function CreateMenu({ items }: { items: CreateMenuItem[] }) {
+	const t = useTokens();
 	if (items.length === 0) return null;
-	// SwiftUI host keeps a stale origin when the tier moves; a plain RN slot pins it.
 	return (
-		<View style={styles.slot}>
-			{/* Built on Host directly: community MenuView can't opt out of SwiftUI's keyboard avoidance, which lifts the button. */}
-			<Host matchContents ignoreSafeArea="keyboard">
-				<Menu
-					label={
-						<RNHostView matchContents>
-							<View
-								style={styles.square}
-								accessible
-								accessibilityRole="button"
-								accessibilityLabel="Create"
-							>
-								<Plus size={20} color={frame.railText} strokeWidth={2.2} />
-							</View>
-						</RNHostView>
-					}
-				>
-					<Section title="Create">
-						{items.map((i) => (
-							<Button key={i.key} label={i.label} systemImage={i.symbol} onPress={i.run} />
-						))}
-					</Section>
-				</Menu>
-			</Host>
-		</View>
+		<MenuView
+			title="Create"
+			onPressAction={({ nativeEvent }) => items.find((i) => i.key === nativeEvent.event)?.run()}
+			actions={items.map((i) => ({ id: i.key, title: i.label, image: i.symbol }))}
+		>
+			<View style={styles.ghost} accessible accessibilityRole="button" accessibilityLabel="Create">
+				<Plus size={20} color={t.ink} strokeWidth={2.2} />
+			</View>
+		</MenuView>
 	);
 }
 
-function LiveField({
-	search,
-	placeholder,
-	onFocusChange,
-}: {
-	search: ComposerSearch;
-	placeholder: string;
-	onFocusChange?: (focused: boolean) => void;
-}) {
-	// Unmounting while focused (a row push, a tab switch) never fires onBlur.
-	useEffect(() => () => onFocusChange?.(false), [onFocusChange]);
-	const input = useRef<TextInput | null>(null);
-	// Uncontrolled: the value round-trips through the screen's chrome entry a render late, and a stale controlled value drops keystrokes.
-	return (
-		<View style={[styles.field, styles.fieldLive]}>
-			<Search size={17} color={frame.railMuted} strokeWidth={2} />
-			<TextInput
-				ref={(el) => {
-					input.current = el;
-					registerComposerInput(el);
-				}}
-				defaultValue={search.value}
-				onChangeText={search.onChangeText}
-				placeholder={placeholder}
-				placeholderTextColor={frame.railMuted}
-				selectionColor={frame.railAccent}
-				style={styles.input}
-				returnKeyType="search"
-				autoCorrect={false}
-				autoCapitalize="none"
-				clearButtonMode="never"
-				accessibilityLabel="Search"
-				onFocus={() => onFocusChange?.(true)}
-				onBlur={() => onFocusChange?.(false)}
-			/>
-			{search.value.length > 0 ? (
-				<Pressable
-					onPress={() => {
-						input.current?.clear();
-						search.onChangeText("");
-					}}
-					accessibilityRole="button"
-					accessibilityLabel="Clear search"
-					hitSlop={10}
-				>
-					<X size={16} color={frame.railMuted} strokeWidth={2} />
-				</Pressable>
-			) : null}
-		</View>
-	);
-}
-
-/**
- * Tab-root tier: search, assistant and create. With `search` bound the field is
- * a live input (Work); otherwise it jumps to Work with the field focused.
- */
-export function Composer({
-	search,
-	onSearchPress,
+function Composer({
+	inline,
 	onAssistant,
 	createItems,
-	onFocusChange,
 }: {
-	search?: ComposerSearch;
-	onSearchPress: () => void;
+	inline: boolean;
 	onAssistant: () => void;
 	createItems: CreateMenuItem[];
-	onFocusChange?: (focused: boolean) => void;
 }) {
-	const placeholder = search?.placeholder ?? "Search clients, quotes, invoices…";
 	return (
-		<View style={styles.tier}>
-			{search ? (
-				<LiveField search={search} placeholder={placeholder} onFocusChange={onFocusChange} />
-			) : (
-				<Pressable
-					onPress={onSearchPress}
-					accessibilityRole="search"
-					accessibilityLabel="Search everything"
-					style={({ pressed }) => [styles.field, pressed && styles.pressed]}
-				>
-					<Search size={17} color={frame.railMuted} strokeWidth={2} />
-					<Text style={styles.placeholder} numberOfLines={1}>
-						Search…
-					</Text>
-				</Pressable>
-			)}
-			<AssistantButton onPress={onAssistant} />
-			<CreateButton items={createItems} />
+		<View style={[styles.row, inline && styles.rowInline]}>
+			<AssistantButton onPress={onAssistant} label={inline ? undefined : "Ask OneTool…"} />
+			<CreateMenu items={createItems} />
 		</View>
 	);
 }
 
 /** Record tier: the first action is the filled primary, then up to two secondaries. */
-export function ActionTray({
+function ActionTray({
 	actions,
+	inline,
 	onRun,
 	onAssistant,
 }: {
 	actions: TrayAction[];
+	inline: boolean;
 	onRun: (key: string) => void;
 	onAssistant: () => void;
 }) {
+	const t = useTokens();
 	const [primary, ...rest] = actions;
 	const press = (a: TrayAction) => {
 		if (a.disabledReason) {
@@ -173,7 +146,7 @@ export function ActionTray({
 		onRun(a.key);
 	};
 	return (
-		<View style={styles.tier}>
+		<View style={[styles.row, inline && styles.rowInline]}>
 			{primary ? (
 				<Pressable
 					onPress={() => press(primary)}
@@ -182,16 +155,17 @@ export function ActionTray({
 					accessibilityState={{ disabled: !!primary.disabledReason }}
 					style={({ pressed }) => [
 						styles.primary,
+						{ backgroundColor: pressed ? t.primarySolidPressed : t.primarySolid },
 						primary.disabledReason ? styles.disabled : null,
-						pressed && styles.pressed,
 					]}
 				>
-					<primary.icon size={16} color={frame.railAccentInk} strokeWidth={2.2} />
+					<primary.icon size={16} color="#ffffff" strokeWidth={2.2} />
 					<Text style={styles.primaryText} numberOfLines={1}>
 						{primary.label}
 					</Text>
 				</Pressable>
 			) : null}
+			{/* Icon-only when inline: the overflow menu leaves these out, so they can't disappear. */}
 			{rest.slice(0, 2).map((a) => (
 				<Pressable
 					key={a.key}
@@ -199,16 +173,19 @@ export function ActionTray({
 					accessibilityRole="button"
 					accessibilityLabel={a.label}
 					accessibilityState={{ disabled: !!a.disabledReason }}
+					hitSlop={4}
 					style={({ pressed }) => [
-						styles.secondary,
+						styles.ghost,
 						a.disabledReason ? styles.disabled : null,
-						pressed && styles.pressedRaised,
+						pressed && styles.pressed,
 					]}
 				>
-					<a.icon size={16} color={frame.railText} strokeWidth={2} />
-					<Text style={styles.secondaryText} numberOfLines={1}>
-						{a.label}
-					</Text>
+					<a.icon size={16} color={t.ink} strokeWidth={2} />
+					{inline ? null : (
+						<Text style={[styles.secondaryText, { color: t.ink }]} numberOfLines={1}>
+							{a.label}
+						</Text>
+					)}
 				</Pressable>
 			))}
 			<AssistantButton onPress={onAssistant} />
@@ -217,51 +194,36 @@ export function ActionTray({
 }
 
 const styles = StyleSheet.create({
-	tier: {
-		height: frame.tierHeight,
-		flexDirection: "row",
-		gap: 6,
-	},
-	field: {
+	row: {
 		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
-		paddingLeft: 12,
-		paddingRight: 12,
-		borderRadius: 12,
-		backgroundColor: frame.railRaised,
+		gap: 4,
+		paddingHorizontal: 6,
 	},
-	fieldLive: {
-		borderWidth: 1,
-		borderColor: frame.railBorder,
+	rowInline: {
+		justifyContent: "center",
+		paddingHorizontal: 4,
 	},
-	placeholder: {
+	grow: {
+		flex: 1,
+		justifyContent: "flex-start",
+	},
+	ghost: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		minWidth: 40,
+		height: 40,
+		paddingHorizontal: 10,
+		borderRadius: 20,
+		flexShrink: 1,
+	},
+	askText: {
 		flex: 1,
 		fontFamily: fontFamily.regular,
 		fontSize: 15,
-		color: frame.railMuted,
-	},
-	input: {
-		flex: 1,
-		height: "100%",
-		fontFamily: fontFamily.regular,
-		// 16px keeps iOS from zooming the field; web's mobile input rule.
-		fontSize: 16,
-		letterSpacing: 0, // RN#42589: pin kern so iOS placeholder can't randomly letter-space
-		color: frame.railText,
-	},
-	slot: {
-		width: frame.tierHeight,
-		height: frame.tierHeight,
-	},
-	square: {
-		width: frame.tierHeight,
-		height: frame.tierHeight,
-		borderRadius: 12,
-		backgroundColor: frame.railRaised,
-		alignItems: "center",
-		justifyContent: "center",
 	},
 	primary: {
 		flex: 1,
@@ -269,40 +231,25 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		borderRadius: 10,
-		backgroundColor: frame.railAccent,
-		paddingHorizontal: 12,
+		height: 36,
+		borderRadius: 18,
+		paddingHorizontal: 14,
 	},
 	primaryText: {
 		fontFamily: fontFamily.semibold,
 		fontSize: 14,
-		color: frame.railAccentInk,
-		flexShrink: 1,
-	},
-	secondary: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 6,
-		minWidth: frame.tierHeight,
-		paddingHorizontal: 13,
-		borderRadius: 10,
-		backgroundColor: frame.railRaised,
+		color: "#ffffff",
 		flexShrink: 1,
 	},
 	secondaryText: {
 		fontFamily: fontFamily.medium,
 		fontSize: 13,
-		color: frame.railText,
 		flexShrink: 1,
 	},
 	disabled: {
 		opacity: 0.45,
 	},
 	pressed: {
-		opacity: 0.8,
-	},
-	pressedRaised: {
-		backgroundColor: frame.railBorder,
+		opacity: 0.6,
 	},
 });

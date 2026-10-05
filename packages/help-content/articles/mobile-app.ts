@@ -32,24 +32,25 @@ export const mobileAppArticles: HelpArticle[] = [
 				],
 			},
 			{
-				heading: "The four tabs",
+				heading: "The tabs",
 				blocks: [
 					{
 						type: "paragraph",
-						text: "On iPhone, every screen sits inside the same frame: your organization and the Activity, notification and profile buttons along the top, and four tabs along the bottom. Above the tabs is a bar with a search field, the assistant button and a **+** button. The frame stays put while you move around, and a label at the top of the page shows where you are, such as **Work > Client**.",
+						text: "On iPhone, every screen sits inside the same frame: your organization and the Activity, notification and profile buttons along the top, and the tab bar along the bottom with **Today**, **Work**, **Money**, **Routes**, and a separate search button on the right. Above the tabs is a bar with **Ask OneTool** (the assistant) and a **+** button. The tab bar shrinks while you scroll down and comes back when you scroll up. The top of the frame stays put while you move around, and a label at the top of the page shows where you are, such as **Work > Client**.",
 					},
 					{
 						type: "list",
 						items: [
 							"**Today** is your schedule. A week strip picks the date, and a **Day / List** toggle switches views: Day is a timeline of the chosen day (timed work in order with a *Now* marker, plus an all-day band for projects and unscheduled tasks), while List looks ahead two weeks, grouped by day. When your organization has more than one member, a **Me** and **Team** toggle switches between your own work and the whole team's. A strip at the top shows the chosen day's visits, the amount overdue, and the quotes awaiting approval, with anything urgent called out underneath. At the end of the Day view, a card previews the next day; tap it to move there.",
-							"**Work** is where you find anything. Type in the search field at the bottom of the screen to search every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type. The tabs across the top narrow to one type or browse its full list. Before you search, the screen shows your favorites from the web workspace and the records you've recently opened on this device.",
+							"**Work** is where you browse your records. The tabs across the top narrow to one type or browse its full list. Before you pick a type, the screen shows your favorites from the web workspace and the records you've recently opened on this device.",
+							"**Search** (the magnifying glass on the right of the tab bar) searches every record: clients (including their contacts and properties), projects, quotes, invoices, and tasks, with results grouped by type. Tap it and start typing.",
 							"**Money** is your money dashboard. The top of the screen shows what you are owed and how much of it is overdue, then two cells: **Quoted** (quotes waiting on a client) and **Unpaid** (invoices still owed). A chart shows what you've collected over the last six months, with this month's total under it. **Record** opens your invoices so you can pick one to record a payment on, and **New quote** starts a quote. Below that, **Needs attention** lists your overdue invoices and the quotes a client has been sitting on, and **Payments** lists your recent payments. Tap any row to open that record. On iPhone, tapping the **Quoted** or **Unpaid** cell jumps to that list on **Work**; on iPad the cells are read-only, so use the tabs on **Work** to browse.",
 							"**Routes** plans the day's stops and gets you from one to the next. See [Planning a route](/help/routing/planning-a-route).",
 						],
 					},
 					{
 						type: "paragraph",
-						text: "On the other tabs, tapping the search field jumps straight to Work with the field ready to type. The sparkle button next to it opens the AI assistant, available on every plan. On the Free plan the assistant allows 10 messages per day for your organization, and a counter above the message field shows how many are left; the allowance resets at midnight UTC. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
+						text: "**Ask OneTool** in the bar above the tabs opens the AI assistant, available on every plan. On the Free plan the assistant allows 10 messages per day for your organization, and a counter above the message field shows how many are left; the allowance resets at midnight UTC. See [Meet the assistant](/help/ai-assistant/meet-the-assistant).",
 					},
 				],
 			},
@@ -110,7 +111,7 @@ export const mobileAppArticles: HelpArticle[] = [
 					},
 					{
 						type: "paragraph",
-						text: "Anything you change offline is saved on the phone the moment you tap. A status line just above the search bar at the bottom of the screen (on iPad, at the bottom of the sidebar) shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
+						text: "Anything you change offline is saved on the phone the moment you tap. A status line under the header at the top of the screen (on iPad, at the bottom of the sidebar) shows how many changes are waiting. They send by themselves once you're back in range with the app open. If you closed the app, they stay saved on the phone and send the next time you open it. Creating records, sending quotes and invoices, editing line items, uploading files, and planning routes need a connection; the app tells you when you try.",
 					},
 					{
 						type: "paragraph",

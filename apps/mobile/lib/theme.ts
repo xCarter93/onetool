@@ -155,8 +155,8 @@ export function useTokens() {
 
 // ----------------------------------------------------------------------------
 // Picture frame — web's graphite rail around a rounded canvas card
-// (workspace-theme.css). The rail owns the status bar, header, sync line,
-// context tier and tab row; screens render inside the canvas. Dark-mode values
+// (workspace-theme.css). The rail owns the status bar, header and sync line;
+// the native glass tab bar floats over the canvas. Dark-mode values
 // live beside the light ones so the swap is a lookup, not a hunt.
 // Rail text tiers on `rail`: text 13.3:1, muted 7.8:1, accent 8.5:1.
 // ----------------------------------------------------------------------------
@@ -186,9 +186,6 @@ export const frame = {
 	notchCurve: 26,
 	headerHeight: 44,
 	headerButton: 36,
-	/** Compact tab row and the tier above it. */
-	tabRowHeight: 36,
-	tierHeight: 46,
 	/** 2px active indicator under a selected segment or tab (decor only). */
 	indicator: tokens.brand,
 } as const;
