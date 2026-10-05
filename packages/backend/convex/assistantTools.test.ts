@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import { ConvexError } from "convex/values";
 import {
 	applyStopEdits,
@@ -10,6 +11,7 @@ import {
 	untrustedIfPublic,
 } from "./assistantTools";
 import { z } from "zod";
+import { api } from "./_generated/api";
 import { REPORT_ENTITY_TYPES } from "./lib/reportFields";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -58,26 +60,26 @@ describe("isAllowedWorkspacePath", () => {
 // withPermissionFallback wrapper must forward `this` — calling the original
 // execute bare loses it and every tool throws
 // "Cannot read properties of undefined (reading 'ctx')".
-describe("assistantTools permission-fallback wrapper", () => {
-	function invokeAsAgentRuntime(
-		tool: unknown,
-		ctx: unknown,
-		input: unknown
-	): Promise<unknown> {
-		const injected: Record<string, unknown> = {
-			...(tool as Record<string, unknown>),
-			ctx,
-		};
-		const execute = injected.execute as (
-			this: unknown,
-			...args: unknown[]
-		) => Promise<unknown>;
-		return execute.call(injected, input, {
-			toolCallId: "call_1",
-			messages: [],
-		});
-	}
+function invokeAsAgentRuntime(
+	tool: unknown,
+	ctx: unknown,
+	input: unknown
+): Promise<unknown> {
+	const injected: Record<string, unknown> = {
+		...(tool as Record<string, unknown>),
+		ctx,
+	};
+	const execute = injected.execute as (
+		this: unknown,
+		...args: unknown[]
+	) => Promise<unknown>;
+	return execute.call(injected, input, {
+		toolCallId: "call_1",
+		messages: [],
+	});
+}
 
+describe("assistantTools permission-fallback wrapper", () => {
 	it("forwards the runtime-injected ctx to the tool handler", async () => {
 		const stats = { activeClients: 7 };
 		const ctx = { runQuery: async () => stats };
@@ -185,6 +187,63 @@ describe("resolveRouteFromList", () => {
 	it("never matches a daily route by savedRouteName", () => {
 		const result = resolveRouteFromList(routes, { savedRouteName: "Daily route" });
 		expect(result.found).toBe(false);
+	});
+});
+
+describe("tools default to the org's local today", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// 8:44 PM Sunday Oct 4 in New York is already Monday Oct 5 in UTC.
+	const EVENING_ET = Date.UTC(2026, 9, 5, 0, 44);
+	const isOrgGet = (ref: Parameters<typeof getFunctionName>[0]) =>
+		getFunctionName(ref) === getFunctionName(api.organizations.get);
+	const NEW_YORK_ORG = { timezone: "America/New_York" };
+
+	it("getRoute picks the local day's route, not the UTC day's", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(EVENING_ET);
+		const localToday = fakeRoute({
+			name: "Daily route — 2026-10-04",
+			kind: "daily",
+			date: Date.UTC(2026, 9, 4),
+		});
+		const utcToday = fakeRoute({
+			name: "Daily route — 2026-10-05",
+			kind: "daily",
+			date: Date.UTC(2026, 9, 5),
+		});
+		const ctx = {
+			runQuery: async (ref: Parameters<typeof getFunctionName>[0]) =>
+				isOrgGet(ref) ? NEW_YORK_ORG : [localToday, utcToday],
+		};
+
+		await expect(
+			invokeAsAgentRuntime(assistantTools.getRoute, ctx, {})
+		).resolves.toMatchObject({
+			found: true,
+			route: { date: "2026-10-04" },
+		});
+	});
+
+	it("getTasks scope=today queries the local day, not the UTC day", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(EVENING_ET);
+		const taskQueryArgs: unknown[] = [];
+		const ctx = {
+			runQuery: async (
+				ref: Parameters<typeof getFunctionName>[0],
+				args: unknown
+			) => {
+				if (isOrgGet(ref)) return NEW_YORK_ORG;
+				taskQueryArgs.push(args);
+				return [];
+			},
+		};
+
+		await invokeAsAgentRuntime(assistantTools.getTasks, ctx, { scope: "today" });
+		expect(taskQueryArgs).toEqual([{ today: Date.UTC(2026, 9, 4) }]);
 	});
 });
 

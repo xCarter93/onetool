@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listStreams } from "@convex-dev/agent";
 import { api, components, internal } from "./_generated/api";
+import { currentDatePrompt } from "./assistantChat";
 import {
 	addMemberToOrg,
 	createPremiumTestIdentity,
@@ -444,6 +445,50 @@ describe("assistantChat", () => {
 					promptMessageId: "msg_from_before_the_pin",
 				})
 			).resolves.toBeDefined();
+		});
+	});
+
+	describe("current date prompt", () => {
+		// 8:44 PM Sunday Oct 4 in New York is already Monday Oct 5 in UTC.
+		const EVENING_ET = Date.UTC(2026, 9, 5, 0, 44, 21);
+
+		it("anchors today to the org's local day, not UTC", () => {
+			expect(currentDatePrompt(EVENING_ET, "America/New_York")).toContain(
+				"It is currently Sunday, 2026-10-04, 20:44 local time in the business's timezone (America/New_York)"
+			);
+		});
+
+		it("falls back to UTC when the org timezone is missing or invalid", () => {
+			expect(currentDatePrompt(EVENING_ET, undefined)).toContain(
+				"It is currently Monday, 2026-10-05, 00:44 local time in the business's timezone (UTC)"
+			);
+			expect(currentDatePrompt(EVENING_ET, "Not/AZone")).toContain(
+				"Monday, 2026-10-05, 00:44 local time in the business's timezone (UTC)"
+			);
+		});
+
+		it("authorizeThread passes the org's timezone to streamResponse", async () => {
+			const { orgA } = await seedTwoOrgs();
+			await t.run(async (ctx) => {
+				await ctx.db.patch(orgA.orgId, { timezone: "America/New_York" });
+			});
+			const asUser = t.withIdentity(
+				createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId)
+			);
+			const { threadId } = await asUser.mutation(
+				api.assistantChat.createThread,
+				{}
+			);
+			const { messageId } = await asUser.mutation(
+				api.assistantChat.sendMessage,
+				{ threadId, prompt: "follow up tomorrow" }
+			);
+
+			const auth = await asUser.query(internal.assistantChat.authorizeThread, {
+				threadId,
+				promptMessageId: messageId,
+			});
+			expect(auth.timezone).toBe("America/New_York");
 		});
 	});
 });

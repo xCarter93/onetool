@@ -990,13 +990,16 @@ export const getSidebarCounts = optionalUserQuery({
  */
 // TODO: Candidate for deletion if confirmed unused.
 export const getToday = optionalUserQuery({
-	args: { assigneeUserId: v.optional(v.id("users")) },
+	args: {
+		assigneeUserId: v.optional(v.id("users")),
+		today: v.optional(v.number()),
+	},
 	handler: async (ctx, args): Promise<TaskDocument[]> => {
 		const orgId = ctx.orgId;
 		if (!orgId) return emptyListResult();
 		await ctx.requireLevel("tasks", "view");
 
-		const today = DateUtils.startOfDay(Date.now());
+		const today = args.today ?? DateUtils.startOfDay(Date.now());
 		const tomorrow = DateUtils.addDays(today, 1);
 
 		let tasks = await ctx.db
