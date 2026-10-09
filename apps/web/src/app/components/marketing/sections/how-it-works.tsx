@@ -181,14 +181,15 @@ function FollowUp() {
 			body="The who-owes-what spreadsheet can go. Set a rule once and OneTool chases overdue invoices, then adds a call task when a reminder isn’t enough."
 		>
 			<Frame scene={8} Content={Scene08Content} />
-			<div className={`lp-chapter-support grid ${GAP} md:grid-cols-2 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,3fr)]`}>
+			<div className={`lp-chapter-support grid ${GAP} md:grid-cols-2`}>
+				{/* Fixed height so the arriving reply pushes the oldest thread out instead of growing the row. */}
 				<Feature
 					as="h4"
 					phoneText
 					title="Replies land on the right client"
 					body="A client’s reply to your quote or invoice comes back to its thread, in one inbox your whole team shares."
 					label="The shared inbox, where a reply from Dunmore Residence to Quote Q-001047 asks to move the job to Thursday."
-					stageClassName="min-h-72 bg-(--sheet)"
+					stageClassName="h-96 bg-(--sheet)"
 				>
 					<InboxCell />
 				</Feature>
@@ -198,17 +199,17 @@ function FollowUp() {
 					title="See which months paid best"
 					body="Start from Revenue by month or 15 other ready-made reports. October counts what’s paid so far, and clicking a month shows its invoices."
 					label="The Revenue by month report for 2026: paid invoices rise from $14,862 in January to a peak of $52,378 in September, with $18,593 so far in October. Total $339K."
-					stageClassName="min-h-72 bg-(--sheet)"
+					stageClassName="h-96 bg-(--sheet)"
 				>
 					<ReportsCell />
 				</Feature>
 				<Feature
 					as="h4"
-					className="md:col-span-2 lg:col-span-1"
+					className="md:col-span-2 lg:grid-cols-2 lg:gap-x-[clamp(32px,4vw,64px)]"
 					title="Ask what’s on for Thursday"
 					body="The assistant answers from your live schedule, clients and invoices. It can also add a task or update a project when you ask."
 					label="The assistant answering what’s on for Thursday with three visits and their times, then adding a brush haul-away task for Trevor Reed on Thursday when asked."
-					stageClassName="min-h-72 bg-(--sheet)"
+					stageClassName="min-h-72 bg-(--sheet) lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:mt-0"
 				>
 					<AssistantCell />
 				</Feature>

@@ -30,8 +30,6 @@ export interface Vendor {
 	pricingModel: PricingModel;
 	/** Which billing period the quoted `basePrice` figures belong to. */
 	quotedBilling: "monthly" | "annual";
-	/** Suffix printed under the plan name, e.g. "billed annually". */
-	quotedBillingLabel: string;
 	plans: CompetitorPlan[];
 	sourceUrl: string;
 	retrievedAt: string;
@@ -44,7 +42,6 @@ export const VENDORS: Vendor[] = [
 		isUs: true,
 		pricingModel: "flat-per-org",
 		quotedBilling: "monthly",
-		quotedBillingLabel: "month-to-month",
 		plans: [
 			{
 				name: "Business",
@@ -62,7 +59,6 @@ export const VENDORS: Vendor[] = [
 		isUs: false,
 		pricingModel: "per-user",
 		quotedBilling: "monthly",
-		quotedBillingLabel: "month-to-month",
 		// Monthly rates per Team size bucket (annual ones in competitor-notes.md); Core exists only in "Just me".
 		plans: [
 			{
@@ -162,7 +158,6 @@ export const VENDORS: Vendor[] = [
 		isUs: false,
 		pricingModel: "per-user",
 		quotedBilling: "monthly",
-		quotedBillingLabel: "month-to-month",
 		plans: [
 			// Monthly rate though their toggle defaults to Annual; MAX's extra-seat price is unpublished.
 			{ name: "Basic", basePrice: 79, includedSeats: 1, extraSeatFee: null },
@@ -185,7 +180,6 @@ export const VENDORS: Vendor[] = [
 		pricingModel: "flat-per-org",
 		// Joby publishes no annual rate, so month-to-month is its only figure.
 		quotedBilling: "monthly",
-		quotedBillingLabel: "month-to-month",
 		plans: [
 			{
 				name: "Starter",
@@ -309,35 +303,6 @@ export const FEATURE_ROWS: FeatureRow[] = [
 		},
 	},
 	{
-		// A deliberate tie: it tells readers a cheap tool has a portal too, better than a claim would.
-		label: "Customer portal",
-		cells: {
-			onetool: { kind: "included" },
-			jobber: { kind: "included" },
-			housecall: { kind: "included" },
-			joby: { kind: "included" },
-		},
-	},
-	{
-		label: "Online card payments",
-		cells: {
-			onetool: { kind: "included" },
-			jobber: { kind: "included" },
-			housecall: { kind: "included" },
-			joby: { kind: "included" },
-		},
-	},
-	{
-		// The row we lose, kept on purpose; Jobber's rate is on /features/ ("Get Paid"), not /pricing/.
-		label: "Card processing fee",
-		cells: {
-			onetool: { kind: "text", label: "Stripe + $1/txn", short: "Stripe rate + $1" },
-			jobber: { kind: "text", label: "2.9% + 30¢", short: "2.9%+30¢" },
-			housecall: { kind: "text", label: "From 2.59%", short: "From 2.59%" },
-			joby: { kind: "text", label: "2.9% + 30¢", short: "2.9%+30¢" },
-		},
-	},
-	{
 		label: "Route planning",
 		cells: {
 			onetool: { kind: "included" },
@@ -368,11 +333,31 @@ export const FEATURE_ROWS: FeatureRow[] = [
 	{
 		label: "Offline mobile app",
 		cells: {
-			// apps/mobile has no offline code yet, so anything but "soon" would be a false claim.
-			onetool: { kind: "soon" },
+			// Per the mobile-app help article; creating records, sending and route planning still need signal.
+			onetool: { kind: "included", label: "Routes, tasks, signatures", short: "Routes, tasks" },
 			jobber: { kind: "included", label: "Forms, visits, time", short: "Partial" },
 			housecall: { kind: "included", label: "Viewing only", short: "View only" },
 			joby: { kind: "unpublished" },
+		},
+	},
+	{
+		// A deliberate tie: it tells readers a cheap tool has these too, better than a claim would.
+		label: "Client portal and card payments",
+		cells: {
+			onetool: { kind: "included" },
+			jobber: { kind: "included" },
+			housecall: { kind: "included" },
+			joby: { kind: "included" },
+		},
+	},
+	{
+		// The row we lose, kept on purpose; Jobber's rate is on /features/ ("Get Paid"), not /pricing/.
+		label: "Card processing fee",
+		cells: {
+			onetool: { kind: "text", label: "Stripe + $1/txn", short: "Stripe rate + $1" },
+			jobber: { kind: "text", label: "2.9% + 30¢", short: "2.9%+30¢" },
+			housecall: { kind: "text", label: "From 2.59%", short: "From 2.59%" },
+			joby: { kind: "text", label: "2.9% + 30¢", short: "2.9%+30¢" },
 		},
 	},
 	{

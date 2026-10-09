@@ -127,20 +127,21 @@
 		--run-phone-w: clamp(224px, 22cqw, 264px);
 	}
 	.lp-run-stage { display: block; position: relative; height: var(--run-h); }
-	.lp-run-map { position: absolute; top: 0; right: calc(-1 * var(--run-bleed)); bottom: 0; width: calc(820 * var(--run-s) + var(--run-bleed) - var(--run-edge)); aspect-ratio: auto; margin: 0; border-radius: 12px 0 0 12px; }
+	/* The panel spans the whole column so wide screens get a card-side margin, not an empty gap beside the map. */
+	.lp-run-map { position: absolute; inset: 0 calc(-1 * var(--run-bleed)) 0 0; aspect-ratio: auto; margin: 0; border-radius: 12px 0 0 12px; }
 	.lp-run-map::after { border: 1px solid var(--rule-2); border-right: 0; }
-	.lp-run-art { top: 0; left: 0; width: auto; height: 100%; translate: none; }
+	/* Basemap x 820 stays at the content edge plus --run-edge; the fade stays short of the route's west leg at x 180. */
+	.lp-run-art { top: 0; left: auto; right: calc(var(--run-bleed) - var(--run-edge)); width: auto; height: 100%; translate: none; -webkit-mask: linear-gradient(to right, transparent, black 96px); mask: linear-gradient(to right, transparent, black 96px); }
 	.lp-run-credit { right: auto; left: 8px; }
-	/* Its right edge sits at basemap x 120, clear of the route's west leg at 180. */
-	.lp-run-card { position: absolute; top: 24px; right: calc(700 * var(--run-s) - var(--run-edge)); width: 256px; box-shadow: var(--lp-shadow-lg); }
+	.lp-run-card { position: absolute; top: 24px; left: 24px; width: 256px; box-shadow: var(--lp-shadow-lg); }
 	/* Top at basemap y 490, under stop 2's pin, so the phone never covers the route. */
 	.lp-run-phone { position: absolute; top: calc(410 * var(--run-s)); right: 0; width: var(--run-phone-w); }
 	/* The phone hangs below the map; the App Store line sits beside that overhang. */
 	.lp-run-app { min-height: calc(var(--run-phone-w) * 882 / 433 - 270 * var(--run-s) - 24px); padding-right: calc(var(--run-phone-w) + 32px); align-content: flex-start; }
 }
 @media (min-width: 1721px) {
-	/* The map now stops short of the page edge, so it fades into the panel. */
-	.lp-run-art { -webkit-mask: linear-gradient(to left, transparent, black 96px); mask: linear-gradient(to left, transparent, black 96px); }
+	/* The art now stops short of the page edge too, so both ends fade into the panel. */
+	.lp-run-art { -webkit-mask: linear-gradient(to right, transparent, black 96px, black calc(100% - 96px), transparent); mask: linear-gradient(to right, transparent, black 96px, black calc(100% - 96px), transparent); }
 }
 
 /* The base rule is the drawn route, so no support, reduced motion and "Pause animations" all show it. */

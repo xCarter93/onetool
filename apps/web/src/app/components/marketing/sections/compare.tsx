@@ -3,13 +3,15 @@
 import { Fragment, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
-import { BUSINESS_MONTHLY_USD } from "@/lib/plan-pricing";
+import { BUSINESS_MONTHLY_USD, BUSINESS_YEARLY_USD } from "@/lib/plan-pricing";
 import { cn } from "@/lib/utils";
 import { Lede, Section, SectionHeading } from "../primitives";
 import {
 	CREW_SIZES,
 	DEFAULT_CREW,
 	FEATURE_ROWS,
+	FOOTNOTE_SOURCES,
+	RETRIEVED_LABEL,
 	VENDORS,
 	cheapestRival,
 	quoteFor,
@@ -20,7 +22,6 @@ import {
 } from "./competitor-data";
 import { useRevealOnce } from "../use-reveal-once";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { CompareChart } from "./compare-chart";
 
 const PEOPLE = { one: "person", other: "people" } as const;
 const pluralRules = new Intl.PluralRules("en-US");
@@ -29,21 +30,10 @@ const people = (crew: number) =>
 
 const RIVALS = VENDORS.filter((v) => !v.isUs);
 
-function priceFor(v: Vendor, crew: number): string | null {
-	const quote = quoteFor(v, crew);
-	return quote ? formatCurrency(quote.monthly, { whole: true }) : null;
-}
+const money = (n: number) => formatCurrency(n, { whole: true });
 
-function planFor(v: Vendor, crew: number): string {
-	const quote = quoteFor(v, crew);
-	if (!quote) return "No published seat price";
-	return `${quote.planName} · ${v.quotedBillingLabel}`;
-}
-
-function Unpublished({ note = "Not published" }: { note?: string }) {
-	return (
-		<span className="text-xs text-(--ink-3)">{note}</span>
-	);
+function Unpublished() {
+	return <span className="text-xs text-(--ink-3)">Not published</span>;
 }
 
 // Plan order per vendor is the order plans first appear in its price list.
@@ -74,7 +64,7 @@ function FeatureValue({ cell, v, crew, index }: { cell: FeatureCell; v: Vendor; 
 		);
 	}
 	if (cell.kind === "tier" && !tierIncluded(v, crew, cell)) {
-		return <span className="text-sm text-(--ink-3)">{cell.label}</span>;
+		return <span className="text-sm text-(--ink-3)">Needs {cell.label}</span>;
 	}
 	if (cell.kind === "text") {
 		return <span className="text-sm text-(--ink-2)">{cell.label}</span>;
@@ -89,7 +79,7 @@ function FeatureValue({ cell, v, crew, index }: { cell: FeatureCell; v: Vendor; 
 				<Check strokeWidth={2.5} className="size-3.5" />
 			</span>
 			<span className="sr-only">Included.</span>
-			{cell.kind === "tier" ? <span>on {cell.label}</span> : cell.label ? <span>{cell.label}</span> : null}
+			{cell.kind === "included" && cell.label ? <span>{cell.label}</span> : null}
 		</span>
 	);
 }
@@ -109,7 +99,7 @@ function CrewStepper({
 	onChange: (crew: CrewSize) => void;
 }) {
 	return (
-		<div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-3">
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-3">
 			<span
 				id="compare-crew-label"
 				className="text-sm font-medium text-(--ink-2)"
@@ -208,10 +198,10 @@ function ShortValue({ cell, v, crew }: { cell: FeatureCell; v: Vendor; crew: Cre
 	if (cell.kind === "unpublished") return <span className="text-(--ink-3)">Not published</span>;
 	if (cell.kind === "soon") return <span className="text-(--ink-3)">Coming soon</span>;
 	if (cell.kind === "tier" && !tierIncluded(v, crew, cell)) {
-		return <span className="text-(--ink-3)">{cell.label.replace(/ plan$/, "")} plan</span>;
+		return <span className="text-(--ink-3)">Needs {cell.label.replace(/ plan$/, "")}</span>;
 	}
 	if (cell.kind === "text") return <span>{cell.short ?? cell.label}</span>;
-	const note = cell.kind === "tier" ? `on ${cell.label.replace(/ plan$/, "")}` : (cell.short ?? cell.label);
+	const note = cell.kind === "included" ? (cell.short ?? cell.label) : undefined;
 	return (
 		<span className="inline-flex flex-col items-center gap-0.5">
 			<Check aria-hidden="true" className="size-4 text-(--paid)" strokeWidth={2.5} />
@@ -221,11 +211,13 @@ function ShortValue({ cell, v, crew }: { cell: FeatureCell; v: Vendor; crew: Cre
 	);
 }
 
-/** Phones: every vendor at once, label above its four cells, so nothing hides behind a picker and the text stays readable. */
+const SHORT_CELL = "border-b border-(--rule) px-1 pb-3 pt-1 text-center align-top text-[13px] leading-[1.35] text-(--ink-2)";
+
+/** Phones: every vendor at once, label above its cells, so nothing hides behind a picker and the text stays readable. */
 function DifferencesGrid({ crew }: { crew: CrewSize }) {
 	return (
 		<table className="w-full table-fixed border-separate border-spacing-0">
-			<caption className="sr-only">Included features by vendor for a crew of {crew}.</caption>
+			<caption className="sr-only">Monthly price and included features by vendor for a crew of {crew}.</caption>
 			<thead className="sticky top-16 z-10 bg-(--sheet)">
 				<tr>
 					{VENDORS.map((v) => (
@@ -236,6 +228,28 @@ function DifferencesGrid({ crew }: { crew: CrewSize }) {
 				</tr>
 			</thead>
 			<tbody>
+				<tr>
+					<th id="cmp-f-price" colSpan={VENDORS.length} className="px-1 pb-1 pt-4 text-left text-sm font-medium text-(--ink)">
+						Monthly price for {crew} {people(crew)}
+					</th>
+				</tr>
+				<tr>
+					{VENDORS.map((v) => {
+						const quote = quoteFor(v, crew);
+						return (
+							<td key={v.key} headers={`cmp-f-price cmp-v-${v.key}`} className={cn(SHORT_CELL, v.isUs && US_COLUMN)}>
+								{quote ? (
+									<>
+										<span className="block text-base font-semibold tabular-nums text-(--ink)">{money(quote.monthly)}</span>
+										<span className="block text-2xs text-(--ink-3)">{quote.planName}</span>
+									</>
+								) : (
+									<span className="text-(--ink-3)">Not published</span>
+								)}
+							</td>
+						);
+					})}
+				</tr>
 				{FEATURE_ROWS.map((row, i) => (
 					<Fragment key={row.label}>
 						<tr>
@@ -246,14 +260,7 @@ function DifferencesGrid({ crew }: { crew: CrewSize }) {
 						</tr>
 						<tr>
 							{VENDORS.map((v) => (
-								<td
-									key={v.key}
-									headers={`cmp-f-${i} cmp-v-${v.key}`}
-									className={cn(
-										"border-b border-(--rule) px-1 pb-3 pt-1 text-center align-top text-[13px] leading-[1.35] text-(--ink-2)",
-										v.isUs && US_COLUMN,
-									)}
-								>
+								<td key={v.key} headers={`cmp-f-${i} cmp-v-${v.key}`} className={cn(SHORT_CELL, v.isUs && US_COLUMN)}>
 									<ShortValue cell={row.cells[v.key]} v={v} crew={crew} />
 								</td>
 							))}
@@ -302,40 +309,27 @@ function LedgerTable({ crew, vendors }: { crew: CrewSize; vendors: Vendor[] }) {
 							Monthly price for {crew} {people(crew)}
 						</th>
 						{vendors.map((v) => {
-							const price = priceFor(v, crew);
+							const quote = quoteFor(v, crew);
 							return (
 								<Cell key={v.key} v={v}>
-									{price ? (
-										<span
-											key={crew}
-											className="block text-xl font-semibold tabular-nums tracking-[-0.02em] text-(--ink)"
-										>
-											{price}
-											<span className="ml-[3px] text-xs font-medium tracking-normal text-(--ink-3)">
-												/mo
+									{quote ? (
+										<span key={crew} className="block">
+											<span className="block text-xl font-semibold tabular-nums tracking-[-0.02em] text-(--ink)">
+												{money(quote.monthly)}
+												<span className="ml-[3px] text-xs font-medium tracking-normal text-(--ink-3)">
+													/mo
+												</span>
 											</span>
+											<span className="mt-0.5 block text-xs text-(--ink-3)">{quote.planName} plan</span>
 										</span>
 									) : (
 										<span className="block text-xl">
-											<Unpublished note="Not published" />
+											<Unpublished />
 										</span>
 									)}
 								</Cell>
 							);
 						})}
-					</tr>
-
-					<tr>
-						<th scope="row" className={ROW_LABEL}>
-							Plan used
-						</th>
-						{vendors.map((v) => (
-							<Cell key={v.key} v={v} className="text-xs leading-[1.45] text-(--ink-3)">
-								<span key={crew} className="block">
-									{planFor(v, crew)}
-								</span>
-							</Cell>
-						))}
 					</tr>
 
 					{FEATURE_ROWS.map((row, i) => (
@@ -356,12 +350,37 @@ function LedgerTable({ crew, vendors }: { crew: CrewSize; vendors: Vendor[] }) {
 	);
 }
 
-function Legend() {
+const SOURCE_URL = Object.fromEntries(FOOTNOTE_SOURCES.map((s) => [s.name, s.url]));
+
+function Source({ name }: { name: (typeof FOOTNOTE_SOURCES)[number]["name"] }) {
 	return (
-		<p className="text-xs leading-[1.65] text-(--ink-2)">
-			<Check aria-hidden="true" className="mr-1 inline size-3.5 align-[-2px]" /> included on the plan quoted for this crew size. A plan name means it needs that
-			higher tier. &ldquo;Coming soon&rdquo; means it is on the roadmap.
-		</p>
+		<a
+			href={SOURCE_URL[name]}
+			target="_blank"
+			rel="noopener noreferrer"
+			className="underline decoration-(--rule-3) underline-offset-2 transition-colors hover:text-(--ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
+		>
+			{name}
+		</a>
+	);
+}
+
+function Footnote() {
+	return (
+		<div className="grid max-w-[46rem] gap-2 text-xs leading-[1.65] text-(--ink-2)">
+			<p>
+				<Check aria-hidden="true" className="mr-1 inline size-3.5 align-[-2px]" /> Included at the price shown.
+				&ldquo;Needs&rdquo; plus a plan name means you&rsquo;d have to move up to that plan to get it. &ldquo;Not
+				published&rdquo; means we found nothing about it on the vendor&rsquo;s own pages.
+			</p>
+			<p>
+				Prices are month-to-month list prices from the <Source name="Jobber" />, <Source name="Housecall Pro" /> and{" "}
+				<Source name="Joby" /> pricing pages, read on {RETRIEVED_LABEL}. Each is the cheapest plan that covers your
+				crew. Paying yearly costs less: Jobber from {money(29)} a month, Housecall Pro from {money(59)} a month,
+				OneTool {money(BUSINESS_YEARLY_USD)} a year. Joby publishes no yearly rate. <Source name="Workiz" /> publishes
+				no base price, so it isn&rsquo;t listed.
+			</p>
+		</div>
 	);
 }
 
@@ -385,24 +404,23 @@ export function Compare() {
 			</div>
 
 			<div className="mt-[clamp(40px,6vw,80px)] grid gap-6">
-				<CrewStepper crew={crew} onChange={setCrew} />
+				<div className="grid gap-4">
+					<CrewStepper crew={crew} onChange={setCrew} />
+					<SavingsLine crew={crew} rival={cheapestVendor} />
+				</div>
 
 				{narrow !== false && (
-				<div className="grid gap-6 md:hidden">
-					<CompareChart crew={crew} width={300} height={220} />
-					<DifferencesGrid crew={crew} />
-					<SavingsLine crew={crew} rival={cheapestVendor} />
-				</div>
+					<div className="md:hidden">
+						<DifferencesGrid crew={crew} />
+					</div>
 				)}
 				{narrow !== true && (
-				<div className="hidden md:grid md:gap-6">
-					<CompareChart crew={crew} width={1200} height={420} />
-					<LedgerTable crew={crew} vendors={VENDORS} />
-					<SavingsLine crew={crew} rival={cheapestVendor} />
-				</div>
+					<div className="hidden md:block">
+						<LedgerTable crew={crew} vendors={VENDORS} />
+					</div>
 				)}
 
-				<Legend />
+				<Footnote />
 			</div>
 		</Section>
 	);

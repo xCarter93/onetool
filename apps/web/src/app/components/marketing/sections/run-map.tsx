@@ -96,7 +96,7 @@ export function RunMap() {
 			</div>
 
 			<p className="lp-run-app mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-(--ink-3)">
-				Crews run the day from the iOS app. It needs an internet connection.
+				Crews run the day from the iOS app. Their route still works without signal.
 				<AppStoreBadge className="h-10" />
 			</p>
 		</div>

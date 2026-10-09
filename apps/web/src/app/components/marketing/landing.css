@@ -404,12 +404,3 @@ html:has(.dc-landing) {
 @media (max-width: 639px) { .lp-job-lines, .lp-job-map { display: none; } }
 @media (max-width: 639px) { .lp-how-frame[data-how-scene="8"] { --s8-label: none; } }
 
-/* Compare chart */
-.lp-cmp-line { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.lp-cmp-line-us { stroke-width: 2.5px; }
-.lp-cmp-draw { fill: none; stroke: white; stroke-width: 8px; }
-.dc-landing:not([data-paused]) [data-reveal="pending"] .lp-cmp-draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
-.dc-landing:not([data-paused]) [data-reveal="pending"] .lp-cmp-fade { opacity: 0; }
-[data-reveal="done"] .lp-cmp-draw { stroke-dasharray: 1; transition: stroke-dashoffset 1200ms var(--ease-in-out); }
-[data-reveal="done"] .lp-cmp-fade { transition: opacity 300ms var(--ease-out-quint) 900ms; }
-.dc-landing[data-paused] [data-reveal] :is(.lp-cmp-draw, .lp-cmp-fade) { transition: none; }
