@@ -21,7 +21,8 @@ export function useInView(ref: RefObject<Element | null>, { once = false, amount
 		const observer = new IntersectionObserver(
 			(entries) => {
 				const entry = entries[entries.length - 1];
-				if (entry.isIntersecting) {
+				// isIntersecting ignores the threshold, and the first callback fires at any ratio.
+				if (entry.isIntersecting && entry.intersectionRatio >= amount) {
 					setInView(true);
 					if (once) observer.disconnect();
 				} else if (!once) {

@@ -895,7 +895,7 @@ function createMatrix(
       if (elapsed - ripples[i].born > RIPPLE_LIFE) ripples.splice(i, 1);
     render();
     const animating = moving || springing || ripples.length > 0 || introActive;
-    if (animating && !doc.hidden) raf = requestAnimationFrame(frame);
+    if (animating && visible && !doc.hidden) raf = requestAnimationFrame(frame);
     else last = 0;
   };
 

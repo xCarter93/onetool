@@ -139,7 +139,7 @@ const TechText = ({
     const scratchCtx = scratch.getContext('2d');
     if (!container || !canvas || !ctx || !scratchCtx) return undefined;
 
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let width = 1;
     let height = 1;
     let dpr = 1;
@@ -514,7 +514,7 @@ const TechText = ({
       last = now;
       const view = ensureLayout(s);
 
-      const sweeping = s.sweep && !reducedMotion && !pointer.inside && dragging < 0;
+      const sweeping = s.sweep && !reducedMotion?.matches && !pointer.inside && dragging < 0;
       if (sweeping) clock += dt * s.speed;
       pulse += dt;
       let targetX = pointer.x;
@@ -696,6 +696,7 @@ const TechText = ({
       wake();
     });
     intersectionObserver.observe(container);
+    reducedMotion?.addEventListener('change', wake);
     if (document.fonts) document.fonts.ready.then(refreshFonts, refreshFonts);
 
     resize();
@@ -706,6 +707,7 @@ const TechText = ({
       wakeRef.current = () => {};
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
+      reducedMotion?.removeEventListener('change', wake);
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerenter', onMove);
       container.removeEventListener('pointerdown', onDown);

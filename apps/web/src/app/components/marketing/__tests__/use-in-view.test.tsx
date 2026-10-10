@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInView } from "../use-in-view";
 
-let intersect: (visible: boolean) => void;
+let intersect: (visible: boolean, ratio?: number) => void;
 let options: IntersectionObserverInit | undefined;
 let disconnected: boolean;
 
@@ -13,7 +13,8 @@ beforeEach(() => {
 	vi.stubGlobal("IntersectionObserver", class {
 		constructor(callback: IntersectionObserverCallback, init?: IntersectionObserverInit) {
 			options = init;
-			intersect = (visible) => callback([{ isIntersecting: visible } as IntersectionObserverEntry], this as never);
+			intersect = (visible, ratio = visible ? 1 : 0) =>
+				callback([{ isIntersecting: visible, intersectionRatio: ratio } as IntersectionObserverEntry], this as never);
 		}
 		observe() {}
 		disconnect() {
@@ -50,5 +51,15 @@ describe("useInView", () => {
 		expect(disconnected).toBe(true);
 		act(() => intersect(false));
 		expect(container.textContent).toBe("true");
+	});
+
+	it("waits for amount even when the first report is already intersecting", () => {
+		const { container } = render(<Probe once amount={0.6} />);
+		act(() => intersect(true, 0.1));
+		expect(container.textContent).toBe("false");
+		expect(disconnected).toBe(false);
+		act(() => intersect(true, 0.6));
+		expect(container.textContent).toBe("true");
+		expect(disconnected).toBe(true);
 	});
 });

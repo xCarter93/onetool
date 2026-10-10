@@ -18,6 +18,8 @@
 @source "../../components/domain/status-badge.tsx";
 @source "../../components/layout/nav-config.tsx";
 @source "../../components/layout/theme-switcher.tsx";
+@source "../../components/react-bits/square-matrix.tsx";
+@source "../../components/react-bits/tech-text.tsx";
 @source "../../components/reui/badge.tsx";
 @source "../../components/reui/phone-input.tsx";
 @source "../../components/ui/button.tsx";
