@@ -1,11 +1,14 @@
 import { ArrowRight } from "lucide-react";
+import { formatCurrency } from "@/lib/money";
 import { PrimaryButton, SecondaryButton } from "../buttons";
 import { LaunchOfferNote } from "../launch-offer-note";
 import { MotionToggle } from "../motion-toggle";
 import { Halftone } from "../halftone";
+import { HeroMatrix } from "./hero-matrix";
 import { CheckItem, Container } from "../primitives";
 import { DAY, FINAL_STEP, PAID_STEP, through } from "./day";
 import { HeroStage } from "./hero-stage";
+import { JOB, JOB_TOTAL } from "./job";
 import { JobStage } from "./job-stage";
 
 // The rewind beat lists no clock: the label clears while the playhead runs back.
@@ -42,19 +45,34 @@ function DayBar() {
 export function Hero() {
 	return (
 		<section className="lp-hero" aria-labelledby="hero-title">
-			<Halftone scene="street" eager className="lp-hero-art" />
 			<HeroStage className="lp-hero-stage">
+				<div className="lp-hero-grid" aria-hidden="true" />
+				<Halftone scene="street" eager className="lp-hero-art" />
 				<Container className="lp-hero-inner">
 					<div className="lp-hero-head">
 						<h1 id="hero-title" className="lp-display">
-							<span className="lp-beat" data-on="0 1">
+							<span className="lp-beat" data-on="0 1" data-label={`${JOB.quote} · sent`}>
 								Quote it.
+								<canvas aria-hidden="true" />
 							</span>{" "}
-							<span className="lp-beat" data-on={through(2, 4)}>
+							<span className="lp-beat" data-on={through(2, 4)} data-label="Signed · 10:42 AM">
 								Get it signed.
+								<canvas aria-hidden="true" />
 							</span>{" "}
-							<span className="lp-beat" data-on={through(5)}>
+							<span className="lp-beat" data-on={through(5)} data-label={`Paid · ${formatCurrency(JOB_TOTAL)}`}>
 								Get paid.
+								<canvas aria-hidden="true" />
+							</span>
+							<span className="lp-select" aria-hidden="true">
+								<span className="lp-select-label" />
+								<i />
+								<i />
+								<i />
+								<i />
+								<i />
+								<i />
+								<i />
+								<i />
 							</span>
 						</h1>
 						<div>
@@ -81,6 +99,7 @@ export function Hero() {
 					</div>
 
 					<div className="lp-job">
+						<HeroMatrix />
 						<DayBar />
 						<JobStage />
 					</div>

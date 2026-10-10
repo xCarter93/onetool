@@ -94,6 +94,23 @@
 @media (prefers-reduced-motion: reduce) {
 	.lp-chapter-art .lp-halftone { transition: none; }
 }
+/* Reading progress through the four chapters: down the index's rail from 1024px, along its bottom edge below. Unsupported, reduced or paused, it stays hidden. */
+@keyframes lp-chapters-down { to { scale: 1 1; } }
+@keyframes lp-chapters-across { to { scale: 1 1; } }
+@media (prefers-reduced-motion: no-preference) {
+	@supports (animation-timeline: view()) {
+		.lp-chapters { view-timeline: --lp-chapters block; }
+		@media (min-width: 1024px) {
+			.lp-chapter-index ol { position: relative; }
+			.lp-chapter-index ol::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 1px; background: var(--accent-ink); transform-origin: top; scale: 1 0; pointer-events: none; }
+			.dc-landing:not([data-paused]) .lp-chapter-index ol::before { animation: lp-chapters-down linear both; animation-timeline: --lp-chapters; animation-range: contain 0% contain 100%; }
+		}
+		@media (max-width: 1023px) {
+			.lp-chapter-index::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: var(--accent-ink); transform-origin: left; scale: 0 1; pointer-events: none; }
+			.dc-landing:not([data-paused]) .lp-chapter-index::after { animation: lp-chapters-across linear both; animation-timeline: --lp-chapters; animation-range: contain 0% contain 100%; }
+		}
+	}
+}
 
 /* Run map (run-map.tsx): Crew A's route on the basemap, card and crew phone over it from 1024px. */
 .lp-run-stage { display: grid; gap: 16px; margin-top: clamp(28px, 3.5vw, 44px); }

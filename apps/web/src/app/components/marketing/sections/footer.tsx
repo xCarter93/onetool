@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- plain anchors: a full load keeps the landing and app stylesheets apart and skips prefetching */
 import Image from "next/image";
 import { ArrowUp } from "lucide-react";
+import { FooterMark } from "./footer-mark";
 import { FEATURES } from "../features";
 
 type FooterLink = { name: string; href: string };
@@ -145,6 +146,8 @@ export function MarketingFooter() {
 						))}
 					</div>
 				</div>
+
+				<FooterMark />
 			</div>
 		</footer>
 	);

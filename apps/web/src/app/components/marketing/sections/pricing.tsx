@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -70,18 +70,39 @@ type Plan = {
 	key: string;
 	name: string;
 	price: string;
+	unit: string;
 	note: string;
 	phoneNote: string;
 	business?: boolean;
+	toggle?: ReactNode;
 	button: ReactNode;
 };
 
-function PriceLine({ price }: { price: string }) {
+function PriceLine({ price, unit }: { price: string; unit: string }) {
 	return (
 		<p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
 			<span className="lp-price text-(--ink)">{price}</span>
-			<span className="text-sm text-(--ink-2)">/ month</span>
+			<span className="text-sm text-(--ink-2)">{unit}</span>
 		</p>
+	);
+}
+
+function BillingToggle({ yearly, onChange }: { yearly: boolean; onChange: (yearly: boolean) => void }) {
+	const tab = (active: boolean) =>
+		cn(
+			"min-h-8 cursor-pointer rounded-md px-2.5 text-xs font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent-ink)",
+			active ? "bg-(--sheet) text-(--ink) shadow-(--lp-shadow)" : "text-(--ink-3) hover:text-(--ink-2)",
+		);
+	return (
+		<div role="group" aria-label="Billing period" className="inline-flex rounded-lg border border-(--rule-2) bg-(--paper) p-0.5">
+			<button type="button" aria-pressed={!yearly} onClick={() => onChange(false)} className={tab(!yearly)}>
+				Monthly
+			</button>
+			<button type="button" aria-pressed={yearly} onClick={() => onChange(true)} className={tab(yearly)}>
+				Yearly
+				{SAVING_PCT > 0 && <span className="font-medium text-(--accent-ink)"> −{SAVING_PCT}%</span>}
+			</button>
+		</div>
 	);
 }
 
@@ -98,8 +119,9 @@ function PhonePlans({ plans }: { plans: Plan[] }) {
 					)}
 				>
 					<p className={PLAN_LABEL}>{plan.name}</p>
-					<PriceLine price={plan.price} />
+					<PriceLine price={plan.price} unit={plan.unit} />
 					<p className="mt-1.5 text-xs leading-[1.4] text-(--ink-2)">{plan.phoneNote}</p>
+					{plan.toggle && <div className="mt-3">{plan.toggle}</div>}
 					<div className="mt-auto">{plan.button}</div>
 				</div>
 			))}
@@ -116,9 +138,12 @@ function PlanHead({ plan }: { plan: Plan }) {
 				plan.business && cn(BUSINESS_COLUMN, "rounded-t-xl border-t border-r border-(--rule-3)"),
 			)}
 		>
-			<p className={PLAN_LABEL}>{plan.name}</p>
+			<div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+				<p className={PLAN_LABEL}>{plan.name}</p>
+				{plan.toggle && <div className="hidden md:block">{plan.toggle}</div>}
+			</div>
 			<div className="hidden md:block">
-				<PriceLine price={plan.price} />
+				<PriceLine price={plan.price} unit={plan.unit} />
 				<p className="mt-2 text-sm leading-[1.5] text-pretty text-(--ink-2)">{plan.note}</p>
 				<div className="mt-4">{plan.button}</div>
 			</div>
@@ -128,16 +153,15 @@ function PlanHead({ plan }: { plan: Plan }) {
 
 export function Pricing() {
 	const promoActive = useLaunchPromoActive();
-	const yearly = formatCurrency(BUSINESS_YEARLY_USD, { whole: true });
-	const businessNote =
-		SAVING_PCT > 0
-			? `Or ${yearly} a year, ${SAVING_PCT}% less. No monthly limits.`
-			: "One flat price per organization. No monthly limits.";
+	const [yearly, setYearly] = useState(false);
+	const perMonth = formatCurrency(BUSINESS_YEARLY_USD / 12, { whole: true });
+	const saving = SAVING_PCT > 0 ? `, ${SAVING_PCT}% less` : "";
 	const plans: Plan[] = [
 		{
 			key: "free",
 			name: "Free",
 			price: formatCurrency(0, { whole: true }),
+			unit: "/ month",
 			note: "Enough for a one-van operation. No time limit.",
 			phoneNote: "No time limit",
 			button: (
@@ -149,10 +173,14 @@ export function Pricing() {
 		{
 			key: "business",
 			name: "Business",
-			price: formatCurrency(BUSINESS_MONTHLY_USD, { whole: true }),
-			note: businessNote,
-			phoneNote: `Or ${yearly} a year, ${SAVING_PCT}% less`,
+			price: formatCurrency(yearly ? BUSINESS_YEARLY_USD : BUSINESS_MONTHLY_USD, { whole: true }),
+			unit: yearly ? "/ year" : "/ month",
+			note: yearly
+				? `Works out at ${perMonth} a month${saving}. No monthly limits.`
+				: "One flat price per organization. No monthly limits.",
+			phoneNote: yearly ? `${perMonth} a month, billed yearly` : "No monthly limits",
 			business: true,
+			toggle: <BillingToggle yearly={yearly} onChange={setYearly} />,
 			button: (
 				<PrimaryButton href="/sign-up" className="w-full justify-center whitespace-nowrap">
 					Start free

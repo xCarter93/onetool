@@ -26,6 +26,10 @@ beforeEach(() => {
 		observe() {}
 		disconnect() {}
 	});
+	vi.stubGlobal("ResizeObserver", class {
+		observe() {}
+		disconnect() {}
+	});
 });
 
 afterEach(() => {
