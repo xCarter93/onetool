@@ -6,17 +6,16 @@ import type { SquareMatrixHandle } from "@/components/react-bits/square-matrix";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useLandingTokens } from "../landing-tokens";
 import { useMotionPaused } from "../motion-pause";
-import { PAID_STEP } from "./day";
+import { PAID_STEP, SIGNED_STEP } from "./day";
 
 const SquareMatrix = dynamic(() => import("@/components/react-bits/square-matrix"), { ssr: false });
 
-// The step each card's job finishes on (hero/day.ts): signed, route done, paid.
 const RIPPLES = new Map([
-	["2", { card: 0, strength: 0.7 }],
-	["4", { card: 1, strength: 0.7 }],
-	[String(PAID_STEP), { card: 2, strength: 1.1 }],
+	[String(SIGNED_STEP), { target: ".lp-sig", strength: 0.6 }],
+	[String(PAID_STEP), { target: ".lp-stamp", strength: 1.1 }],
 ]);
 
+/** The dot floor the sheet sits on; it ripples out from the signature and from the stamp landing. */
 export function HeroMatrix() {
 	const area = useRef<HTMLDivElement>(null);
 	const ground = useRef<SquareMatrixHandle>(null);
@@ -30,11 +29,15 @@ export function HeroMatrix() {
 		if (!node || !stage) return;
 		const observer = new MutationObserver(() => {
 			const hit = RIPPLES.get(stage.dataset.step ?? "");
-			const card = hit && stage.querySelectorAll(".lp-job-card")[hit.card];
-			if (!hit || !card) return;
+			const target = hit && stage.querySelector(hit.target);
+			if (!hit || !target) return;
 			const box = node.getBoundingClientRect();
-			const rect = card.getBoundingClientRect();
-			ground.current?.ripple((rect.left + rect.width / 2 - box.left) / box.width, (rect.bottom - box.top) / box.height, hit.strength);
+			const rect = target.getBoundingClientRect();
+			ground.current?.ripple(
+				(rect.left + rect.width / 2 - box.left) / box.width,
+				(rect.top + rect.height / 2 - box.top) / box.height,
+				hit.strength,
+			);
 		});
 		observer.observe(stage, { attributes: true, attributeFilter: ["data-step"] });
 		return () => observer.disconnect();

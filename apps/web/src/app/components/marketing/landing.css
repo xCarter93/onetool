@@ -165,7 +165,7 @@ html:has(.dc-landing) {
 }
 
 /* Type scale: every landing heading reads from these, never a per-section clamp. */
-.lp-display { font-size: clamp(44px, 6.2vw, 96px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance; }
+.lp-display { font-size: clamp(44px, 5.4vw, 92px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance; }
 .lp-h2 { font-size: clamp(34px, 4.4vw, 64px); line-height: 1; letter-spacing: -.032em; font-weight: 600; text-wrap: balance; }
 .lp-h2-sm { font-size: clamp(28px, 3.2vw, 44px); line-height: 1.05; letter-spacing: -.028em; font-weight: 600; text-wrap: balance; }
 .lp-h3 { font-size: clamp(20px, 1.7vw, 24px); line-height: 1.2; letter-spacing: -.02em; font-weight: 600; }
@@ -205,24 +205,22 @@ html:has(.dc-landing) {
 }
 
 .lp-hero { position: relative; isolation: isolate; overflow: clip; background: var(--paper); }
-.lp-hero-inner { padding-top: clamp(48px, 7vw, 112px); }
-.lp-hero-head { display: grid; gap: 28px; }
+.lp-hero-inner { display: grid; row-gap: clamp(40px, 5vw, 56px); padding-top: clamp(40px, 5vw, 80px); padding-bottom: clamp(48px, 5vw, 80px); }
+.lp-hero-copy { display: grid; align-content: center; justify-items: start; gap: 28px; }
 .lp-hero-trust { margin-top: -4px; }
-@media (min-width: 1024px) {
-	.lp-hero-head { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: end; column-gap: clamp(40px, 5vw, 88px); }
-	.lp-hero-head > h1 { grid-row: 1 / 3; }
-	.lp-hero-trust { grid-column: 2; }
+/* Copy on bare paper at left, the sheet on its dot floor at right: nothing decorative runs under the text. */
+@media (min-width: 1280px) {
+	.lp-hero-inner { grid-template-columns: minmax(0, 1fr) clamp(560px, 46%, 680px); align-items: center; column-gap: clamp(48px, 4.5vw, 88px); }
 }
-/* Phones: the chips and the offer follow the job stage, so the first card starts inside the first screen. */
+@media (max-width: 1279px) { .lp-job { max-width: 720px; } }
+/* Phones: the chips and the offer follow the sheet, so it starts inside the first screen. */
 @media (max-width: 639px) {
-	.lp-hero-inner { display: flex; flex-direction: column; padding-top: 32px; }
-	.lp-hero-head { display: contents; }
-	.lp-hero-head > div { margin-top: 24px; }
-	.lp-hero-trust { order: 1; margin-top: 4px; padding-bottom: 40px; }
-	.lp-job { margin-top: 20px; padding-bottom: 0; }
+	.lp-hero-inner { display: flex; flex-direction: column; row-gap: 0; padding-top: 32px; }
+	.lp-hero-copy { display: contents; }
+	.lp-hero-copy > :not(h1) { margin-top: 24px; }
+	.lp-hero-copy > .lp-hero-trust { order: 1; margin-top: 28px; }
+	.lp-job { margin-top: 32px; }
 }
-/* The one-job stage under the headline: day bar, three cards, Rachel's phone. */
-.lp-job { position: relative; margin-top: clamp(28px, 3.2vw, 56px); padding-bottom: clamp(40px, 5vw, 72px); }
 /* Device-pixel type for the 390x844 client phone (try-it-phone.tsx), which its caller scales as one picture: iOS text styles plus the portal greeting. */
 .lp-ios { --ios-caption: 11px; --ios-footnote: 13px; --ios-subhead: 15px; --ios-body: 17px; --portal-title: 32px; }
 /* Off-screen mockups skip layout and paint; their boxes have fixed sizes, so nothing around them moves. */
@@ -246,76 +244,26 @@ html:has(.dc-landing) {
 .lp-swap { display: grid; justify-items: end; }
 .lp-swap > * { grid-area: 1 / 1; opacity: var(--on); transition: opacity 250ms ease; }
 
-/* Only the lit beat is solid; the rest are dashed outlines drawn by beat-dashes.ts, or a solid CSS outline until that canvas is ready. */
-.lp-beat { position: relative; isolation: isolate; display: block; width: fit-content; color: color-mix(in oklch, var(--accent-ink) calc(var(--on) * 100%), transparent); -webkit-text-stroke: calc((1 - var(--on)) * 1.5px) var(--ink-3); transition: color 400ms ease, -webkit-text-stroke-width 400ms ease; }
-.lp-beat[data-dashed] { -webkit-text-stroke-width: 0; }
-.lp-beat > canvas { position: absolute; display: none; pointer-events: none; opacity: calc(1 - var(--on)); transition: opacity 400ms ease; }
-.lp-beat[data-dashed] > canvas { display: block; }
-/* A selection frame like a design tool's, on whichever beat is lit (hero-stage.tsx places it): corner handles, a mono label naming what the beat produced, blinking specks. */
-.lp-hero-head > h1 { position: relative; }
-.lp-select { --pad: .1em; position: absolute; top: calc(var(--sy, 0px) - var(--pad)); left: calc(var(--sx, 0px) - var(--pad)); width: calc(var(--sw, 0px) + 2 * var(--pad)); height: calc(var(--sh, 0px) + 2 * var(--pad)); border: 1px solid color-mix(in oklch, var(--accent-ink) 55%, transparent); opacity: 0; pointer-events: none; }
-.lp-select[data-placed] { transition: top 600ms var(--ease-in-out), left 600ms var(--ease-in-out), width 600ms var(--ease-in-out), height 600ms var(--ease-in-out), opacity 300ms ease; }
-.lp-select::before { content: ""; position: absolute; inset: -3px; background: linear-gradient(var(--accent-ink) 0 0) left top / 5px 5px no-repeat, linear-gradient(var(--accent-ink) 0 0) right top / 5px 5px no-repeat, linear-gradient(var(--accent-ink) 0 0) left bottom / 5px 5px no-repeat, linear-gradient(var(--accent-ink) 0 0) right bottom / 5px 5px no-repeat; }
-.lp-select-label { position: absolute; top: -1px; left: calc(100% + 12px); color: color-mix(in oklch, var(--accent-ink) 80%, transparent); font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0; white-space: nowrap; }
-.lp-select i { position: absolute; opacity: 0; }
-.lp-select i:nth-of-type(1) { top: -10px; left: 22%; width: 3px; height: 3px; background: var(--accent-ink); --d: 1.3s; --delay: 0s; }
-.lp-select i:nth-of-type(2) { top: -13px; left: 61%; width: 5px; height: 5px; border: 1px solid var(--accent-ink); --d: 1.9s; --delay: .4s; }
-.lp-select i:nth-of-type(3) { top: 18%; right: -11px; width: 2px; height: 2px; background: var(--accent-ink); --d: 1.1s; --delay: .8s; }
-.lp-select i:nth-of-type(4) { top: 64%; right: -14px; width: 8px; height: 8px; border: 1px solid var(--accent-ink); --d: 2.3s; --delay: .2s; }
-.lp-select i:nth-of-type(5) { bottom: -10px; left: 38%; width: 2px; height: 2px; background: var(--accent-ink); --d: 1.5s; --delay: 1.1s; }
-.lp-select i:nth-of-type(6) { bottom: -12px; left: 84%; width: 3px; height: 3px; background: var(--accent-ink); --d: 1.2s; --delay: .6s; }
-.lp-select i:nth-of-type(7) { top: 40%; left: -12px; width: 5px; height: 5px; border: 1px solid var(--accent-ink); --d: 1.7s; --delay: 1.4s; }
-.lp-select i:nth-of-type(8) { top: 78%; left: -9px; width: 2px; height: 2px; background: var(--accent-ink); --d: 1.4s; --delay: .9s; }
-@media (max-width: 767px) { .lp-select-label { display: none; } }
-@keyframes lp-speck {
-	0%, 62%, 100% { opacity: 0; }
-	6%, 30%, 40% { opacity: .9; }
-	35% { opacity: .3; }
-}
-@media (prefers-reduced-motion: no-preference) {
-	.dc-landing:not([data-paused]) .lp-select i { animation: lp-speck var(--d) ease-in-out var(--delay) infinite; }
-}
+/* The lit beat is accent; beats already done stay ink and the ones ahead stay muted (hero-stage.tsx sets data-past). */
+.lp-beat { --rest: var(--ink-3); display: block; width: fit-content; color: color-mix(in oklch, var(--accent-ink) calc(var(--on) * 100%), var(--rest)); transition: color 400ms ease; }
+.lp-beat[data-past] { --rest: var(--ink); }
 
-/* The arriving screen waits for the leaving one to clear, so pins never show through the quote. */
-
-/* Right-anchored at 1280+ so the whole route stays clear of the activity card; the card covers the lake. */
 .lp-pin { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; translate: -50% -50%; border: 2px solid var(--sheet); border-radius: 50%; background: var(--accent-ink); color: var(--paper); font-size: 12px; font-weight: 700; box-shadow: 0 4px 12px rgb(0 0 0 / .45); }
 .lp-pin[data-start] { border-color: var(--paid); background: var(--sheet); color: var(--paid); }
-.lp-pin[data-live]::after { content: ""; position: absolute; inset: -2px; border: 2px solid var(--accent-ink); border-radius: 50%; opacity: 0; }
-.lp-hero-stage[data-step="1"] .lp-pin[data-live="1"]::after,
-.lp-hero-stage[data-step="3"] .lp-pin[data-live="3"]::after { animation: lp-ping 1600ms var(--ease-out-quint) infinite; }
-@keyframes lp-ping { from { opacity: .7; scale: 1; } to { opacity: 0; scale: 2.2; } }
 
-/* The activity card hangs over the window's right edge, so the quote keeps that strip clear. */
-
-/* Every row is 59.9px (the meta line's min-height evens them out), so 298px shows exactly five with no sliver. */
-/* The rewind fades the list out, then drops the day's rows while it is out of sight. */
-
-/* Day bar over the console: the sample day's clock, with the pause control. --p, the playhead's share of the day, comes from hero-stage.tsx. */
-.lp-daybar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; margin-bottom: clamp(12px, 1.4vw, 20px); }
-.lp-daybar-note { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
-.lp-daybar-track { position: relative; height: 48px; }
-.lp-daybar-rail, .lp-daybar-fill { position: absolute; top: 24px; right: 0; left: 0; height: 1px; background: var(--rule-2); }
-.lp-daybar-fill { background: var(--accent-ink); transform-origin: left; scale: var(--p) 1; transition: scale 900ms var(--ease-in-out); }
-.lp-daybar-tick { position: absolute; top: 20px; width: 1px; height: 9px; background: var(--rule-3); }
-.lp-daybar-head { position: absolute; inset: 0; translate: calc(var(--p) * 100%) 0; transition: translate 900ms var(--ease-in-out); }
-.lp-daybar-head::before { content: ""; position: absolute; top: 20px; left: -4.5px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent-ink); box-shadow: 0 0 0 3px var(--paper); }
-/* Near 5 PM (its data-on) the clock sits left of the head so it stays inside the track. */
-.lp-daybar-clock { position: absolute; top: 0; left: 0; translate: calc(-50% - var(--on) * 50%) 0; justify-items: center; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-ink); white-space: nowrap; transition: translate 900ms var(--ease-in-out); }
-.lp-daybar-hours { position: absolute; top: 32px; right: 0; left: 0; font-size: 11px; color: var(--ink-3); }
-.lp-daybar-hours > span { position: absolute; translate: -50% 0; }
-.lp-daybar-hours > span:first-child { translate: 0 0; }
-.lp-daybar-hours > span:last-child { right: 0; left: auto; translate: 0 0; }
-@media (max-width: 639px) {
-	.lp-daybar { grid-template-columns: auto minmax(0, 1fr); }
-	.lp-daybar-track { grid-column: 1 / -1; order: -1; }
-	.lp-daybar-note { justify-self: end; }
-}
-
-/* Narrower design widths keep the console's smallest text at 9px or more on screen. */
-@media (min-width: 1024px) and (max-width: 1279px) {
-}
-/* Below 1024px the console drops the rail, the stop list and the float. */
+/* The job's clock under the sheet. --p, the playhead's share of 8 AM to 2 PM, comes from hero-stage.tsx. */
+.lp-timeline { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 16px; margin-top: 36px; }
+.lp-timeline-track { position: relative; grid-column: 1 / -1; height: 44px; }
+.lp-timeline-rail, .lp-timeline-fill { position: absolute; top: 8px; right: 0; left: 0; height: 1px; background: var(--rule-2); }
+.lp-timeline-fill { background: var(--accent-ink); transform-origin: left; scale: var(--p) 1; transition: scale 900ms var(--ease-in-out); }
+.lp-timeline-tick { position: absolute; top: 4px; width: 1px; height: 9px; background: var(--rule-3); }
+.lp-timeline-head { position: absolute; inset: 0; translate: calc(var(--p) * 100%) 0; transition: translate 900ms var(--ease-in-out); }
+.lp-timeline-head::before { content: ""; position: absolute; top: 4px; left: -4.5px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent-ink); box-shadow: 0 0 0 3px var(--paper); }
+.lp-timeline-mark { position: absolute; top: 22px; translate: -50% 0; color: color-mix(in oklch, var(--ink-2) calc(var(--on) * 100%), var(--ink-3)); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; transition: color 300ms ease; }
+.lp-timeline-mark strong { font-weight: 600; color: color-mix(in oklch, var(--ink) calc(var(--on) * 100%), var(--ink-3)); transition: color 300ms ease; }
+.lp-timeline-mark[data-edge="start"] { translate: 0 0; }
+.lp-timeline-mark[data-edge="end"] { translate: -100% 0; }
+.lp-timeline-note { justify-self: end; font-size: 12px; text-align: right; color: var(--ink-3); }
 
 /* Trades */
 .lp-trades { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: clamp(32px, 4vw, 56px); }
@@ -370,50 +318,26 @@ html:has(.dc-landing) {
 @media (pointer: coarse) { .dc-landing .lp-form :is(input, textarea, select) { min-height: 44px; } }
 @media (pointer: coarse) { .lp-btn-sm { height: 44px; } }
 
-/* One-job stage (hero/job-stage.tsx): quote, route and invoice cards, each lit while its steps run, and the client phone. */
-.lp-job-row { display: grid; gap: 14px; }
-@media (min-width: 900px) { .lp-job-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: stretch; } }
-@media (min-width: 1024px) { .lp-job-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) 224px; column-gap: 18px; } }
-.lp-hero-grid, .lp-hero-matrix { display: none; }
-/* The hero as one drawing: a drafting sheet between the page rails, crop marks around the console, a live halftone ground under it (hero-matrix.tsx), and pointer depth from hero-stage.tsx's --px/--py. */
+/* The sheet and Rachel's phone (hero/job-stage.tsx); the phone overlaps only the sheet's right padding, never its prices. */
+.lp-job { position: relative; }
+.lp-stage { position: relative; padding-right: 168px; }
+.lp-hero-matrix { display: none; }
+@media (max-width: 1023px) { .lp-stage { padding-right: 0; } }
+/* Desktop: crop marks around the stage, the live dot floor under it (hero-matrix.tsx), and pointer depth from hero-stage.tsx's --px/--py. */
 @media (min-width: 1024px) {
-	.lp-job { padding-bottom: clamp(112px, 10vw, 176px); }
-	.lp-hero-grid {
-		position: absolute; z-index: -1; inset: 0 var(--lp-frame-x, 0); display: block; pointer-events: none;
-		background: linear-gradient(to right, color-mix(in oklch, var(--ink) 10%, transparent) 1px, transparent 1px) 0 0 / 40px 40px, linear-gradient(to bottom, color-mix(in oklch, var(--ink) 10%, transparent) 1px, transparent 1px) 0 0 / 40px 40px;
-		-webkit-mask: linear-gradient(to bottom, transparent, black 12%, black 68%, transparent);
-		mask: linear-gradient(to bottom, transparent, black 12%, black 68%, transparent);
-	}
-	/* Solid from the cards' bottom edge out to the viewport edges, so it reads as the hero's floor, not texture under text. */
-	.lp-hero-matrix { position: absolute; z-index: -1; top: 45%; right: calc(-1 * (var(--lp-gutter) + max(0px, (100vw - 1560px) / 2))); bottom: 0; left: calc(-1 * (var(--lp-gutter) + max(0px, (100vw - 1560px) / 2))); display: block; pointer-events: none; -webkit-mask: linear-gradient(to bottom, transparent, black 55%); mask: linear-gradient(to bottom, transparent, black 55%); }
-	.lp-job-row { position: relative; translate: calc(var(--px, 0) * -6px) calc(var(--py, 0) * -4px); transition: translate 700ms var(--ease-out-quint); }
-	.lp-job-row::after { content: ""; position: absolute; inset: -20px; pointer-events: none; background: linear-gradient(var(--rule-3) 0 0) left top / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) left top / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) right top / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) right top / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) left bottom / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) left bottom / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) right bottom / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) right bottom / 1px 20px no-repeat; }
+	.lp-stage::after { content: ""; position: absolute; inset: -20px; pointer-events: none; background: linear-gradient(var(--rule-3) 0 0) left top / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) left top / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) right top / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) right top / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) left bottom / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) left bottom / 1px 20px no-repeat, linear-gradient(var(--rule-3) 0 0) right bottom / 20px 1px no-repeat, linear-gradient(var(--rule-3) 0 0) right bottom / 1px 20px no-repeat; }
+	.lp-hero-matrix { position: absolute; z-index: -1; inset: -14% -18% 64px -14%; display: block; pointer-events: none; -webkit-mask: radial-gradient(closest-side, black 50%, transparent); mask: radial-gradient(closest-side, black 50%, transparent); }
+	.lp-sheet { translate: calc(var(--px, 0) * -4px) calc(var(--py, 0) * -3px); transition: translate 700ms var(--ease-out-quint); }
+	.lp-job-phone { translate: calc(var(--px, 0) * 7px) calc(var(--py, 0) * 5px); transition: translate 700ms var(--ease-out-quint); }
 }
-.lp-job-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px; border: 1px solid var(--rule-2); border-radius: 14px; background: var(--sheet); color: var(--ink-2); font-size: 13px; line-height: 1.4; box-shadow: var(--lp-shadow); transition: border-color 300ms ease, box-shadow 300ms ease; }
-.lp-job-card[data-on] { border-color: color-mix(in oklch, var(--accent) calc(var(--on) * 100%), var(--rule-2)); box-shadow: 0 0 0 calc(var(--on) * 3px) color-mix(in oklch, var(--accent) 16%, transparent), var(--lp-shadow); }
+/* The route card in How it works (sections/run-map.tsx). */
+.lp-job-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px; border: 1px solid var(--rule-2); border-radius: 14px; background: var(--sheet); color: var(--ink-2); font-size: 13px; line-height: 1.4; box-shadow: var(--lp-shadow); }
 .lp-job-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .lp-job-head .lp-swap { flex: none; justify-items: end; }
 .lp-job-kicker { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
 .lp-job-title { display: grid; gap: 2px; color: var(--ink); }
 .lp-job-title strong { font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
 .lp-job-title span { color: var(--ink-2); }
-.lp-job-lines { display: grid; border-top: 1px solid var(--rule); }
-.lp-job-lines > li { display: flex; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
-.lp-job-lines > li > span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.lp-job-lines > li > span:last-child { flex: none; }
-.lp-job-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.lp-job-total strong { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lp-job-swap { justify-items: start; margin-top: auto; }
-.lp-job-note { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
-.lp-job-note[data-paid] { color: var(--paid); font-weight: 500; }
-.lp-job-map { position: relative; overflow: hidden; aspect-ratio: 600 / 475; border: 1px solid var(--rule); border-radius: 8px; }
-/* Each image is the exact 600x475 slice of the route map the card shows. */
-.lp-job-map-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.lp-job-map > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.lp-job-line { fill: none; stroke: var(--lp-route); stroke-width: 4px; vector-effect: non-scaling-stroke; stroke-opacity: .9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1600ms var(--ease-in-out); }
-.lp-hero-stage[data-drawn] .lp-job-line { stroke-dashoffset: 0; }
-.dc-landing[data-paused] .lp-job-line { transition: none; }
-.lp-job-map .lp-pin { width: 22px; height: 22px; font-size: 11px; }
 .lp-job-stops { display: grid; }
 .lp-job-stops > li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--rule); }
 .lp-job-stops > li > div { flex: 1; min-width: 0; }
@@ -421,31 +345,60 @@ html:has(.dc-landing) {
 .lp-job-stops > li > div > span { font-size: 12px; color: var(--ink-3); }
 .lp-job-stops .lp-pin { position: static; flex: none; width: 22px; height: 22px; translate: none; font-size: 11px; }
 .lp-job-stops .lp-swap { flex: none; }
-.lp-job-amount { font-size: 28px; font-weight: 600; letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lp-job-events { display: grid; gap: 8px; }
-/* Pending events dim to body-copy color, not opacity, so they keep 4.5:1 whenever Lighthouse samples the loop. */
-.lp-job-events > li { display: flex; align-items: center; gap: 8px; color: color-mix(in oklch, var(--ink) calc(var(--on) * 100%), var(--ink-2)); transition: color 300ms ease; }
-.lp-job-events svg { flex: none; color: var(--paid); }
-.lp-job-collected { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--rule); }
-.lp-job-collected strong { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.lp-job-arrow { display: none; }
-@media (min-width: 900px) { .lp-job-arrow { display: grid; place-items: center; align-self: center; width: 20px; color: color-mix(in oklch, var(--accent-ink) calc(var(--on) * 100%), var(--ink-3)); transition: color 300ms ease; } }
-.lp-job-phone { display: none; }
-@media (min-width: 1024px) { .lp-job-phone { display: block; align-self: center; } }
+
+.lp-sheet { position: relative; z-index: 1; display: flex; flex-direction: column; padding: 28px; border: 1px solid var(--rule-2); border-radius: 8px; background: var(--sheet); color: var(--ink-2); font-size: 13px; line-height: 1.4; font-variant-numeric: tabular-nums; box-shadow: var(--lp-shadow-lg); }
+.lp-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.lp-sheet-brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.lp-sheet-logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; background: var(--accent-ink); color: var(--sheet); font-size: 14px; font-weight: 700; }
+.dark .lp-sheet-logo { color: var(--lp-on-accent); }
+.lp-sheet-doc { display: grid; justify-items: end; gap: 2px; }
+.lp-sheet-doc > span, .lp-sheet-label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.lp-sheet-doc > strong { font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.lp-sheet-event { justify-items: start; margin: 18px -28px 0; padding: 10px 28px; border-block: 1px solid var(--rule); background: var(--paper); }
+.lp-sheet-event > span { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 500; }
+.lp-sheet-event svg { flex: none; color: var(--accent-ink); }
+.lp-sheet-event [data-paid] svg { color: var(--paid); }
+.lp-sheet-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-top: 18px; }
+.lp-sheet-meta > p { display: grid; gap: 1px; }
+.lp-sheet-meta strong { color: var(--ink); font-size: 14px; font-weight: 600; }
+.lp-sheet-job { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--rule-2); }
+.lp-sheet-job strong { color: var(--ink); font-weight: 600; }
+.lp-sheet-job span { font-size: 12px; color: var(--ink-3); }
+.lp-sheet-lines > li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.lp-sheet-lines > li > span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lp-sheet-lines > li > span:last-child { flex: none; color: var(--ink); }
+.lp-sheet-sum { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 13rem); align-items: center; gap: 16px; margin-top: 12px; }
+.lp-sheet-totals { grid-area: 1 / 2; display: grid; gap: 6px; }
+.lp-sheet-totals > div { display: flex; justify-content: space-between; gap: 12px; }
+.lp-sheet-totals > div:last-child { margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--rule-2); color: var(--ink); font-size: 16px; font-weight: 600; }
+/* A rubber stamp: the noise mask knocks small holes in the ink. */
+.lp-stamp { grid-area: 1 / 1; justify-self: center; display: grid; justify-items: center; gap: 3px; padding: 8px 16px 9px; border: 3px solid currentColor; border-radius: 8px; outline: 1.25px solid currentColor; outline-offset: -8px; color: var(--paid); font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: .16em; text-indent: .16em; text-transform: uppercase; rotate: -9deg; opacity: var(--on); scale: calc(1 + (1 - var(--on)) * .5); transition: opacity 140ms ease, scale 260ms var(--ease-out-quint); -webkit-mask: var(--lp-stamp-grain) 0 0 / 100% 100%; mask: var(--lp-stamp-grain) 0 0 / 100% 100%; --lp-stamp-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 -10 7.4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.lp-stamp small { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-indent: .12em; }
+.lp-sheet-sign { display: grid; justify-items: start; margin-top: 20px; }
+.lp-sheet-sign .lp-swap { justify-items: start; width: min(100%, 17rem); padding-top: 6px; border-top: 1px solid var(--rule-3); font-size: 12px; color: var(--ink-3); }
+/* dasharray 1 2 with the offset past 1 keeps round caps from leaving a dot before the pen gets there. */
+.lp-sig { display: block; width: min(100%, 15rem); height: auto; margin-bottom: -6px; overflow: visible; }
+.lp-sig path { fill: none; stroke: var(--accent-ink); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 2; stroke-dashoffset: calc((1 - var(--on)) * 1.05); transition: stroke-dashoffset calc(var(--on) * var(--dur) * 1500ms) linear calc(300ms + var(--on) * var(--at) * 1500ms); }
+/* Steps are hero/day.ts's: 0 the quote, 4 PAID_STEP, 5 RESET_STEP. The rewind fades the sheet out and back before a fresh quote writes itself in. */
+.lp-sheet > * { transition: opacity 300ms ease; }
+.lp-hero-stage[data-step="5"] .lp-sheet > :not(.lp-sheet-head) { opacity: 0; }
+@keyframes lp-write { from { opacity: 0; clip-path: inset(0 100% 0 0); } }
+@keyframes lp-thunk { 35% { transform: translateY(2px) scale(.996); } }
+.dc-landing:not([data-paused]) .lp-hero-stage[data-replay][data-step="0"] .lp-sheet-lines > li { animation: lp-write 520ms var(--ease-out-quint) calc(250ms + var(--i) * 120ms) both; }
+.dc-landing:not([data-paused]) .lp-hero-stage[data-replay][data-step="0"] .lp-sheet-sum { animation: lp-write 520ms var(--ease-out-quint) 900ms both; }
+.dc-landing:not([data-paused]) .lp-hero-stage[data-step="4"] .lp-sheet { animation: lp-thunk 240ms var(--ease-out-quint) 100ms; }
+@media (max-width: 639px) {
+	.lp-sheet { padding: 20px; }
+	.lp-sheet-event { margin-inline: -20px; padding-inline: 20px; }
+	.lp-sheet-sum { grid-template-columns: minmax(0, 1fr) minmax(0, 10.5rem); }
+	.lp-stamp { font-size: 24px; }
+}
+
+.lp-job-phone { position: absolute; z-index: 2; right: 0; bottom: 32px; width: 184px; }
+@media (max-width: 1023px) { .lp-job-phone { display: none; } }
 .lp-job-screens { position: relative; width: 390px; height: 844px; }
 .lp-job-screen { position: absolute; inset: 0; opacity: var(--on); transition: opacity 250ms ease calc(var(--on) * 250ms); }
 .lp-job-caption { margin-top: 10px; text-align: center; font-size: 12px; color: var(--ink-3); }
-/* Tablets: quote beside route, then the invoice across both with its events beside the amount. On phones the list and the map go and the stops carry the story. */
-@media (min-width: 640px) and (max-width: 899px) {
-	.lp-job-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-	.lp-job-card[data-card="invoice"] { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "head head" "title title" "amount events" "collected collected"; column-gap: 18px; align-items: start; }
-	.lp-job-card[data-card="invoice"] > .lp-job-head { grid-area: head; }
-	.lp-job-card[data-card="invoice"] > .lp-job-title { grid-area: title; }
-	.lp-job-card[data-card="invoice"] > .lp-job-amount { grid-area: amount; }
-	.lp-job-card[data-card="invoice"] > .lp-job-events { grid-area: events; }
-	.lp-job-card[data-card="invoice"] > .lp-job-collected { grid-area: collected; }
-}
-@media (max-width: 639px) { .lp-job-lines, .lp-job-map { display: none; } }
 @media (max-width: 639px) { .lp-how-frame[data-how-scene="8"] { --s8-label: none; } }
 
 /* Footer wordmark (footer-mark.tsx): TechText on the drafting grid, its selection frame sweeping letter to letter while the pointer is away. */

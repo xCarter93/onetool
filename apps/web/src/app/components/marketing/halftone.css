@@ -6,9 +6,6 @@
 .dark .dc-landing .lp-halftone:is([data-scene="house"], [data-scene="van"], [data-scene="paid"], [data-scene="ahead"]) { --lp-halftone-alpha: 0.22; }
 .dc-landing .lp-halftone:is([data-scene="vans"], [data-scene="doorstep"]) { --lp-halftone-alpha: 0.4; }
 .dark .dc-landing .lp-halftone:is([data-scene="vans"], [data-scene="doorstep"]) { --lp-halftone-alpha: 0.3; }
-/* The hero lede and actions sit over the street, so it stays well under half strength. */
-.dc-landing .lp-halftone[data-scene="street"] { --lp-halftone-alpha: 0.34; }
-.dark .dc-landing .lp-halftone[data-scene="street"] { --lp-halftone-alpha: 0.28; }
 .dc-landing .lp-halftone[data-scene="old-way"] { --lp-halftone-alpha: 0.34; }
 .dark .dc-landing .lp-halftone[data-scene="old-way"] { --lp-halftone-alpha: 0.26; }
 
@@ -57,19 +54,10 @@
 	}
 }
 
-/* Generated drawings: the street behind the hero's lede column, the vans in the pricing label head, the doorstep under the FAQ's demo box. */
-.lp-hero-art, .lp-pricing-art, .lp-faq-art { display: none; }
+/* Generated drawings: the vans in the pricing label head, the doorstep under the FAQ's demo box. */
+.lp-pricing-art, .lp-faq-art { display: none; }
 @media (min-width: 1024px) {
-	.lp-hero-art { position: absolute; z-index: -1; top: clamp(24px, 3vw, 56px); right: 0; display: block; width: min(58vw, 1040px); aspect-ratio: 3072 / 1317; translate: calc(var(--px, 0) * 4px) calc(var(--py, 0) * 3px); transition: translate 700ms var(--ease-out-quint); }
 	.lp-faq-art { display: block; width: 22rem; aspect-ratio: 1536 / 1032; margin-top: 40px; }
-}
-/* The street develops with the sample day: hero-stage.tsx's --p (8 AM to 5 PM) carries the mask edge across it, fully drawn by 5 PM. */
-@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
-	.dc-landing:not([data-paused]) .lp-hero-art img {
-		-webkit-mask: linear-gradient(to right, black 42.5%, transparent 57.5%) calc(80% - var(--p) * 95%) 0 / 200% 100% no-repeat;
-		mask: linear-gradient(to right, black 42.5%, transparent 57.5%) calc(80% - var(--p) * 95%) 0 / 200% 100% no-repeat;
-		transition: -webkit-mask-position 900ms var(--ease-in-out), mask-position 900ms var(--ease-in-out);
-	}
 }
 @media (min-width: 768px) {
 	.lp-pricing-art { display: block; width: min(100%, 30rem); aspect-ratio: 2048 / 878; margin-bottom: 12px; }

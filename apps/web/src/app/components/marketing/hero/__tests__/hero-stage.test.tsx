@@ -5,8 +5,6 @@ import { setMotionPaused } from "../../motion-pause";
 import { DAY, FINAL_STEP, PAID_STEP, RESET_STEP } from "../day";
 import { HeroStage } from "../hero-stage";
 
-const TO_PAID_MS = DAY.slice(0, PAID_STEP).reduce((sum, { hold }) => sum + hold, 0) + 100;
-
 let reduce: boolean;
 let intersect: (visible: boolean) => void;
 
@@ -41,11 +39,17 @@ afterEach(() => {
 function renderStage() {
 	const { container } = render(
 		<HeroStage>
-			<strong data-collected>$11,860.00</strong>
+			<h1>
+				<span className="lp-beat" data-on="0">Quote it.</span>
+				<span className="lp-beat" data-on="1 2">Get it signed.</span>
+				<span className="lp-beat" data-on="3 4">Get paid.</span>
+			</h1>
 		</HeroStage>
 	);
 	return container.firstElementChild as HTMLElement;
 }
+
+const past = (root: HTMLElement) => [...root.querySelectorAll(".lp-beat")].map((beat) => beat.hasAttribute("data-past"));
 
 describe("HeroStage", () => {
 	it("shows the end of the day at once under reduced motion", () => {
@@ -53,13 +57,13 @@ describe("HeroStage", () => {
 		const root = renderStage();
 		act(() => intersect(true));
 		expect(root.dataset.step).toBe(String(FINAL_STEP));
-		expect(root.style.getPropertyValue("--p")).toBe("1");
-		expect(root.querySelector("[data-collected]")?.textContent).toBe("$12,942.50");
+		expect(root.style.getPropertyValue("--p")).toBe(String(DAY[FINAL_STEP].at));
+		expect(past(root)).toEqual([true, true, false]);
 		act(() => vi.advanceTimersByTime(10000));
 		expect(root.dataset.step).toBe(String(FINAL_STEP));
 	});
 
-	it("plays the day through to 5 PM, then rewinds within 30 seconds", () => {
+	it("plays the job through to paid, then rewinds within 30 seconds", () => {
 		const root = renderStage();
 		act(() => intersect(true));
 		const seen = [root.dataset.step];
@@ -75,10 +79,32 @@ describe("HeroStage", () => {
 		}
 		expect(seen).toEqual([...Array.from({ length: RESET_STEP + 1 }, (_, i) => String(i)), "0"]);
 		expect(playhead.at(PAID_STEP)).toBe(String(DAY[PAID_STEP].at));
-		expect(playhead.at(FINAL_STEP)).toBe("1");
 		expect(playhead.at(RESET_STEP)).toBe(playhead[0]);
 		expect(elapsed).toBeLessThanOrEqual(30000);
-		expect(root.querySelector("[data-collected]")?.textContent).toBe("$11,860.00");
+	});
+
+	it("writes the sheet in only on replays, after the first rewind", () => {
+		const root = renderStage();
+		act(() => intersect(true));
+		expect(root.hasAttribute("data-replay")).toBe(false);
+		act(() => vi.advanceTimersByTime(DAY.reduce((sum, { hold }) => sum + hold, 0) + 100));
+		expect(root.dataset.step).toBe(String(RESET_STEP));
+		expect(root.hasAttribute("data-replay")).toBe(false);
+		act(() => vi.advanceTimersByTime(1000));
+		expect(root.dataset.step).toBe("0");
+		expect(root.hasAttribute("data-replay")).toBe(true);
+	});
+
+	it("marks the beats already done and clears them on the rewind", () => {
+		const root = renderStage();
+		act(() => intersect(true));
+		expect(past(root)).toEqual([false, false, false]);
+		act(() => vi.advanceTimersByTime(DAY.slice(0, PAID_STEP).reduce((sum, { hold }) => sum + hold, 0) + 100));
+		expect(root.dataset.step).toBe(String(PAID_STEP));
+		expect(past(root)).toEqual([true, true, false]);
+		act(() => vi.advanceTimersByTime(DAY[PAID_STEP].hold));
+		expect(root.dataset.step).toBe(String(RESET_STEP));
+		expect(past(root)).toEqual([false, false, false]);
 	});
 
 	it("advances only while on screen", () => {
@@ -88,7 +114,7 @@ describe("HeroStage", () => {
 		expect(root.hasAttribute("data-drawn")).toBe(false);
 		act(() => intersect(true));
 		expect(root.hasAttribute("data-drawn")).toBe(true);
-		act(() => vi.advanceTimersByTime(2000));
+		act(() => vi.advanceTimersByTime(DAY[0].hold));
 		expect(root.dataset.step).toBe("1");
 		act(() => intersect(false));
 		act(() => vi.advanceTimersByTime(10000));
@@ -98,7 +124,7 @@ describe("HeroStage", () => {
 	it("holds its step while motion is paused", () => {
 		const root = renderStage();
 		act(() => intersect(true));
-		act(() => vi.advanceTimersByTime(2000));
+		act(() => vi.advanceTimersByTime(DAY[0].hold));
 		expect(root.dataset.step).toBe("1");
 		act(() => setMotionPaused(true));
 		act(() => vi.advanceTimersByTime(20000));
@@ -106,16 +132,5 @@ describe("HeroStage", () => {
 		act(() => setMotionPaused(false));
 		act(() => vi.advanceTimersByTime(DAY[1].hold));
 		expect(root.dataset.step).toBe("2");
-	});
-
-	it("stops the collected amount immediately when paused during its count", () => {
-		const root = renderStage();
-		act(() => intersect(true));
-		act(() => vi.advanceTimersByTime(TO_PAID_MS));
-		expect(root.dataset.step).toBe("6");
-		act(() => setMotionPaused(true));
-		const amount = root.querySelector("[data-collected]")?.textContent;
-		act(() => vi.advanceTimersByTime(500));
-		expect(root.querySelector("[data-collected]")?.textContent).toBe(amount);
 	});
 });

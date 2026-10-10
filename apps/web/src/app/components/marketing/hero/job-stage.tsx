@@ -1,195 +1,134 @@
-import { ArrowRight, Check, CreditCard, Landmark, Send } from "lucide-react";
+import type { CSSProperties } from "react";
+import { Check, CreditCard, Send, Truck } from "lucide-react";
 import { StatusBadge } from "@/components/domain/status-badge";
 import { Iphone } from "@/components/ui/iphone";
 import { formatCurrency } from "@/lib/money";
-import { ROUTE } from "@/remotion/scenes/routing-map-data";
 import { ClientPhone, SCREEN_H, SCREEN_W, type PhoneScreen } from "../sections/try-it-phone";
-import { PAID_STEP, through } from "./day";
+import { DAY, INVOICE_STEP, PAID_STEP, RESET_STEP, SIGNED_STEP, through } from "./day";
 import { JOB, JOB_SUBTOTAL, JOB_TAX, JOB_TOTAL } from "./job";
 import { Scaled } from "./scaled";
+import { SIGNATURE } from "./signature";
 
-// The slice of the 820x840 route map (its own pixels) that holds the yard and both stops; landing.css crops the art to it.
-const CROP = { x: 100, y: 235, w: 600, h: 475 };
-const at = (x: number, y: number) => ({
-	left: `${((x - CROP.x) / CROP.w) * 100}%`,
-	top: `${((y - CROP.y) / CROP.h) * 100}%`,
-});
-const ROUTE_D = `M ${ROUTE.map(([x, y]) => `${x} ${y}`).join(" L ")}`;
-
-const COLLECTED_BEFORE = 11860;
-
-type State = { on: string; status: string; label: string };
-
-function Status({ states }: { states: State[] }) {
-	return (
-		<span className="lp-swap">
-			{states.map((state) => (
-				<span key={state.on} data-on={state.on}>
-					<StatusBadge status={state.status}>{state.label}</StatusBadge>
-				</span>
-			))}
-		</span>
-	);
-}
+const QUOTE_STEPS = `${through(0, INVOICE_STEP - 1)} ${RESET_STEP}`;
+const INVOICE_STEPS = through(INVOICE_STEP);
 
 const SCREENS: { on: string; screen: PhoneScreen }[] = [
-	{ on: "0 1", screen: "quote" },
-	{ on: "2 3 4", screen: "approved" },
-	{ on: "5", screen: "invoice" },
+	{ on: `0 ${RESET_STEP}`, screen: "quote" },
+	{ on: through(SIGNED_STEP, INVOICE_STEP - 1), screen: "approved" },
+	{ on: String(INVOICE_STEP), screen: "invoice" },
 	{ on: through(PAID_STEP), screen: "paid" },
+];
+
+const EVENTS = [
+	{ on: `0 ${RESET_STEP}`, icon: Send, text: `Sent to ${JOB.contact} · ${DAY[0].clock}` },
+	{ on: String(SIGNED_STEP), icon: Check, text: `Signed on her phone · ${DAY[SIGNED_STEP].clock}`, paid: true },
+	{ on: String(SIGNED_STEP + 1), icon: Truck, text: `Crew A finished the job · ${DAY[SIGNED_STEP + 1].clock}` },
+	{ on: String(INVOICE_STEP), icon: Send, text: `Invoiced from the signed quote · ${DAY[INVOICE_STEP].clock}` },
+	{ on: through(PAID_STEP), icon: CreditCard, text: `Paid by card · ${DAY[PAID_STEP].clock}`, paid: true },
+];
+
+const STATUSES = [
+	{ on: `0 ${RESET_STEP}`, status: "sent", label: "Awaiting signature" },
+	{ on: through(SIGNED_STEP, INVOICE_STEP - 1), status: "approved", label: "Signed" },
+	{ on: String(INVOICE_STEP), status: "sent", label: "Sent" },
+	{ on: through(PAID_STEP), status: "paid", label: "Paid" },
 ];
 
 const TOTALS = { subtotal: JOB_SUBTOTAL, tax: JOB_TAX, total: JOB_TOTAL };
 
+/** Rachel's quote as one sheet: she signs it, the crew does the job, and it becomes the invoice she pays. */
 export function JobStage() {
 	return (
-		<div className="lp-job-row" aria-hidden="true">
-			<article className="lp-job-card" data-on="0 1 2">
-				<header className="lp-job-head">
-					<span className="lp-job-kicker">Quote</span>
-					<Status
-						states={[
-							{ on: "0 1", status: "sent", label: "Awaiting signature" },
-							{ on: through(2), status: "approved", label: "Signed" },
-						]}
-					/>
+		<div className="lp-stage" aria-hidden="true">
+			<article className="lp-sheet">
+				<header className="lp-sheet-head">
+					<p className="lp-sheet-brand">
+						<span className="lp-sheet-logo">R</span>
+						Ridgeline Home Services
+					</p>
+					<p className="lp-sheet-doc">
+						<span className="lp-swap">
+							<span data-on={QUOTE_STEPS}>Quote</span>
+							<span data-on={INVOICE_STEPS}>Invoice</span>
+						</span>
+						<strong className="lp-swap">
+							<span data-on={QUOTE_STEPS}>{JOB.quote}</span>
+							<span data-on={INVOICE_STEPS}>{JOB.invoice}</span>
+						</strong>
+					</p>
 				</header>
-				<p className="lp-job-title">
-					<strong>{JOB.quote}</strong>
-					<span>
-						{JOB.title} · {JOB.client}
-					</span>
+
+				<p className="lp-sheet-event lp-swap">
+					{EVENTS.map(({ on, icon: Icon, text, paid }) => (
+						<span key={text} data-on={on} data-paid={paid || undefined}>
+							<Icon size={15} strokeWidth={2.25} />
+							{text}
+						</span>
+					))}
 				</p>
-				<ul className="lp-job-lines">
-					{JOB.lines.map((line) => (
-						<li key={line.id}>
+
+				<div className="lp-sheet-meta">
+					<p>
+						<span className="lp-sheet-label">Bill to</span>
+						<strong>{JOB.contact}</strong>
+						{JOB.client}
+					</p>
+					<span className="lp-swap">
+						{STATUSES.map(({ on, status, label }) => (
+							<span key={on} data-on={on}>
+								<StatusBadge status={status}>{label}</StatusBadge>
+							</span>
+						))}
+					</span>
+				</div>
+
+				<p className="lp-sheet-job">
+					<strong>{JOB.title}</strong>
+					<span>Tue, Oct 6</span>
+				</p>
+				<ul className="lp-sheet-lines">
+					{JOB.lines.map((line, i) => (
+						<li key={line.id} style={{ "--i": i } as CSSProperties}>
 							<span>{line.name}</span>
 							<span>{formatCurrency(line.price)}</span>
 						</li>
 					))}
 				</ul>
-				<p className="lp-job-total">
-					<span>Total with tax</span>
-					<strong>{formatCurrency(JOB_TOTAL)}</strong>
-				</p>
-				<span className="lp-swap lp-job-swap">
-					<span className="lp-job-note" data-on="0 1">
-						Sent to {JOB.contact} yesterday
-					</span>
-					<span className="lp-job-note" data-paid data-on={through(2)}>
-						<Check size={14} strokeWidth={2.5} />
-						Signed by {JOB.contact} · 10:42 AM
-					</span>
-				</span>
-			</article>
 
-			<span className="lp-job-arrow" data-on={through(3)}>
-				<ArrowRight size={18} />
-			</span>
+				<div className="lp-sheet-sum">
+					<dl className="lp-sheet-totals">
+						<div>
+							<dt>Subtotal</dt>
+							<dd>{formatCurrency(JOB_SUBTOTAL)}</dd>
+						</div>
+						<div>
+							<dt>Tax {(JOB.taxRate * 100).toFixed(2)}%</dt>
+							<dd>{formatCurrency(JOB_TAX)}</dd>
+						</div>
+						<div>
+							<dt>Total</dt>
+							<dd>{formatCurrency(JOB_TOTAL)}</dd>
+						</div>
+					</dl>
+					<p className="lp-stamp" data-on={through(PAID_STEP)}>
+						Paid
+						<small>Oct 6 · Card</small>
+					</p>
+				</div>
 
-			<article className="lp-job-card" data-card="route" data-on="3 4">
-				<header className="lp-job-head">
-					<span className="lp-job-kicker">Route</span>
-					<Status
-						states={[
-							{ on: "0 1 2 3", status: "active", label: "On the road" },
-							{ on: through(4), status: "completed", label: "Done 1:30 PM" },
-						]}
-					/>
-				</header>
-				<p className="lp-job-title">
-					<strong>Tuesday, Crew A</strong>
-					<span>2 stops · 2.7 mi · 9 min of driving</span>
-				</p>
-				<div className="lp-job-map">
-					{/* eslint-disable-next-line @next/next/no-img-element -- fixed crop of the basemap; lazy so the hidden theme's copy (and both on phones) is never fetched */}
-					<img className="lp-job-map-art dark:hidden" src="/landing/hero/route-crop-light.webp" alt="" width={540} height={428} loading="lazy" decoding="async" />
-					{/* eslint-disable-next-line @next/next/no-img-element -- see above */}
-					<img className="lp-job-map-art hidden dark:block" src="/landing/hero/route-crop-dark.webp" alt="" width={600} height={475} loading="lazy" decoding="async" />
-					<svg viewBox={`${CROP.x} ${CROP.y} ${CROP.w} ${CROP.h}`} preserveAspectRatio="none">
-						<path d={ROUTE_D} pathLength={1} className="lp-job-line" />
+				<div className="lp-sheet-sign">
+					<svg className="lp-sig" data-on={through(SIGNED_STEP)} viewBox={SIGNATURE.viewBox}>
+						{SIGNATURE.strokes.map((stroke) => (
+							<path key={stroke.d} d={stroke.d} pathLength={1} style={{ "--at": stroke.at, "--dur": stroke.dur } as CSSProperties} />
+						))}
 					</svg>
-					<span className="lp-pin" data-start style={at(179.9, 689.4)}>
-						S
-					</span>
-					<span className="lp-pin" data-live="1" style={at(180, 288.1)}>
-						1
-					</span>
-					<span className="lp-pin" data-live="3" style={at(594.7, 456.1)}>
-						2
+					<span className="lp-swap">
+						<span data-on={`0 ${RESET_STEP}`}>Client signature</span>
+						<span data-on={through(SIGNED_STEP)}>
+							{JOB.contact} · signed Oct 6, {DAY[SIGNED_STEP].clock}
+						</span>
 					</span>
 				</div>
-				<ul className="lp-job-stops">
-					<li>
-						<span className="lp-pin">1</span>
-						<div>
-							<strong>Elm Street Plaza</strong>
-							<span>Power wash · 9:00 AM</span>
-						</div>
-						<Status
-							states={[
-								{ on: "0", status: "scheduled", label: "Scheduled" },
-								{ on: "1", status: "active", label: "In progress" },
-								{ on: through(2), status: "completed", label: "Done" },
-							]}
-						/>
-					</li>
-					<li>
-						<span className="lp-pin">2</span>
-						<div>
-							<strong>{JOB.client}</strong>
-							<span>{JOB.title} · 11:00 AM</span>
-						</div>
-						<Status
-							states={[
-								{ on: "0 1", status: "pending", label: "Pending quote" },
-								{ on: "2", status: "scheduled", label: "Scheduled" },
-								{ on: "3", status: "active", label: "In progress" },
-								{ on: through(4), status: "completed", label: "Done" },
-							]}
-						/>
-					</li>
-				</ul>
-			</article>
-
-			<span className="lp-job-arrow" data-on={through(5)}>
-				<ArrowRight size={18} />
-			</span>
-
-			<article className="lp-job-card" data-card="invoice" data-on={through(5)}>
-				<header className="lp-job-head">
-					<span className="lp-job-kicker">Invoice</span>
-					<Status
-						states={[
-							{ on: "0 1 2 3 4", status: "draft", label: "After the job" },
-							{ on: "5", status: "sent", label: "Sent" },
-							{ on: through(PAID_STEP), status: "paid", label: "Paid" },
-						]}
-					/>
-				</header>
-				<p className="lp-job-title">
-					<strong>{JOB.invoice}</strong>
-					<span>Made from the signed quote</span>
-				</p>
-				<p className="lp-job-amount">{formatCurrency(JOB_TOTAL)}</p>
-				<ul className="lp-job-events">
-					<li data-on={through(5)}>
-						<Send size={15} />
-						Sent to {JOB.contact} · 1:40 PM
-					</li>
-					<li data-on={through(PAID_STEP)}>
-						<CreditCard size={15} />
-						Paid by card · 1:52 PM
-					</li>
-					<li data-on={through(PAID_STEP)}>
-						<Landmark size={15} />
-						Stripe payout · Thu, Oct 8
-					</li>
-				</ul>
-				<p className="lp-job-collected">
-					<span>Collected this week</span>
-					<strong data-collected>{formatCurrency(COLLECTED_BEFORE)}</strong>
-				</p>
 			</article>
 
 			<div className="lp-job-phone">
