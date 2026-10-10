@@ -106,23 +106,28 @@ function BillingToggle({ yearly, onChange }: { yearly: boolean; onChange: (yearl
 	);
 }
 
-/* Phones: the table's label column would squeeze the plans to 29% each, so the summaries sit above it at full width. */
-function PhonePlans({ plans }: { plans: Plan[] }) {
+/* Phones: the table's label column would squeeze the plans to 29% each, so the summaries stack above it at full width. */
+function PhonePlans({ plans, toggle }: { plans: Plan[]; toggle: ReactNode }) {
 	return (
-		<div className="grid grid-cols-2 gap-3 md:hidden">
+		<div className="grid gap-3 md:hidden">
+			<div className="flex items-center justify-between gap-3">
+				<span className="text-sm font-medium text-(--ink-2)">Business billing</span>
+				{toggle}
+			</div>
 			{plans.map((plan) => (
 				<div
 					key={plan.key}
 					className={cn(
-						"flex flex-col rounded-xl border border-(--rule-2) bg-(--sheet) p-4",
+						"flex items-center justify-between gap-4 rounded-xl border border-(--rule-2) bg-(--sheet) p-4",
 						plan.business && "border-(--rule-3) bg-(--accent-wash)",
 					)}
 				>
-					<p className={PLAN_LABEL}>{plan.name}</p>
-					<PriceLine price={plan.price} unit={plan.unit} />
-					<p className="mt-1.5 text-xs leading-[1.4] text-(--ink-2)">{plan.phoneNote}</p>
-					{plan.toggle && <div className="mt-3">{plan.toggle}</div>}
-					<div className="mt-auto">{plan.button}</div>
+					<div className="min-w-0">
+						<p className={PLAN_LABEL}>{plan.name}</p>
+						<PriceLine price={plan.price} unit={plan.unit} />
+						<p className="mt-1.5 text-xs leading-[1.4] text-(--ink-2)">{plan.phoneNote}</p>
+					</div>
+					<div className="w-32 shrink-0">{plan.button}</div>
 				</div>
 			))}
 		</div>
@@ -134,11 +139,12 @@ function PlanHead({ plan }: { plan: Plan }) {
 		<th
 			scope="col"
 			className={cn(
-				"border-b border-(--rule) px-3 pb-3 pt-5 text-left align-top font-normal md:pb-5 md:px-5",
-				plan.business && cn(BUSINESS_COLUMN, "rounded-t-xl border-t border-r border-(--rule-3)"),
+				"border-b border-(--rule) p-0 text-left align-top font-normal md:px-5 md:pb-5 md:pt-5",
+				plan.business && cn(BUSINESS_COLUMN, "md:rounded-t-xl md:border-t md:border-r md:border-(--rule-3)"),
 			)}
 		>
-			<div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+			{/* Phones name the plans in the cards above; the header stays for screen readers. */}
+			<div className="flex min-h-9 flex-wrap items-center justify-between gap-2 max-md:sr-only">
 				<p className={PLAN_LABEL}>{plan.name}</p>
 				{plan.toggle && <div className="hidden md:block">{plan.toggle}</div>}
 			</div>
@@ -204,7 +210,7 @@ export function Pricing() {
 
 			<div className="mt-[clamp(40px,6vw,80px)]">
 				<div>
-					<PhonePlans plans={plans} />
+					<PhonePlans plans={plans} toggle={<BillingToggle yearly={yearly} onChange={setYearly} />} />
 					<table className="mt-5 w-full table-fixed border-separate border-spacing-0 md:mt-0">
 						<caption className="sr-only">What the Free and Business plans include.</caption>
 						<colgroup>

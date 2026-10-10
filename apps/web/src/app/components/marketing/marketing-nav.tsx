@@ -5,6 +5,7 @@ import Image from "next/image";
 import { BookOpen, ChevronDown, CircleHelp, Compass, LifeBuoy, Menu, X } from "lucide-react";
 import { SecondaryButton } from "./buttons";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "./features";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
@@ -400,19 +401,27 @@ export function MarketingNav() {
 								{link.label}
 							</a>
 						))}
-						<div className="mt-2 border-t border-(--rule) pt-3">
-							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Features</p>
-							{FEATURES.map((item) => (
-								<a
-									key={item.key}
-									href={item.href}
-									onClick={() => setMenuOpen(false)}
-									className={MENU_ROW_CLASS}
-								>
-									{item.label}
-								</a>
-							))}
-						</div>
+						<Collapsible className="mt-2 border-t border-(--rule) pt-3">
+							<CollapsibleTrigger className={cn(MENU_ROW_CLASS, "group w-full cursor-pointer justify-between")}>
+								Features
+								<ChevronDown
+									aria-hidden="true"
+									className="size-4 text-(--ink-3) transition-transform duration-200 group-data-[panel-open]:rotate-180"
+								/>
+							</CollapsibleTrigger>
+							<CollapsibleContent>
+								{FEATURES.map((item) => (
+									<a
+										key={item.key}
+										href={item.href}
+										onClick={() => setMenuOpen(false)}
+										className={cn(MENU_ROW_CLASS, "pl-6")}
+									>
+										{item.label}
+									</a>
+								))}
+							</CollapsibleContent>
+						</Collapsible>
 						<div className="mt-2 border-t border-(--rule) pt-3">
 							<p className={cn(EYEBROW_CLASS, "px-3 pb-1")}>Resources</p>
 							{RESOURCE_ITEMS.map((item) => (

@@ -42,7 +42,12 @@
 .lp-chapter-links svg { color: var(--ink-3); transition: translate 200ms var(--lp-ease), color 160ms ease; }
 .lp-chapter-links a:hover svg { translate: 1px -1px; color: currentColor; }
 /* After the base rules above, so the phone values win. */
-@media (max-width: 639px) { .lp-chapter { padding-block: 40px; } .lp-chapter-links { margin-top: 20px; } .lp-chapter-links a { min-height: 44px; } }
+@media (max-width: 639px) {
+	.lp-chapter { padding-block: 40px; }
+	.lp-chapter-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin-top: 20px; }
+	.lp-chapter-links > span { grid-column: 1 / -1; }
+	.lp-chapter-links a { min-height: 44px; }
+}
 
 .lp-chapter-index ol { display: flex; margin: 0; padding: 0; list-style: none; }
 .lp-chapter-index a { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink-3); font-size: 15px; font-weight: 500; white-space: nowrap; transition: color 160ms ease; }
@@ -80,7 +85,8 @@
 	.lp-chapter-art[data-active="ahead"] [data-scene="ahead"] { opacity: var(--lp-halftone-alpha); }
 }
 @media (max-width: 1023px) {
-	.lp-chapter-index { position: sticky; top: 64px; z-index: 2; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: blur(14px); overflow-x: auto; scrollbar-width: none; }
+	/* Bleeds through the container gutter so full-width scenes like the run map don't show beside it. */
+	.lp-chapter-index { position: sticky; top: 64px; z-index: 2; margin-inline: calc(-1 * var(--lp-gutter)); padding-inline: var(--lp-gutter); border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: blur(14px); overflow-x: auto; scrollbar-width: none; }
 	.lp-chapter-index ol { justify-content: space-between; gap: 0; }
 	.lp-chapter-index a { padding: 0 6px; font-size: 13px; }
 	.lp-chapter-index a > span { display: none; }
