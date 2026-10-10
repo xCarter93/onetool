@@ -300,7 +300,7 @@ export function ClientDemo() {
 				ref={surfaceRef}
 				className="relative mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
 			>
-				{/* Below lg the card dissolves so its strip and title sit above the phone and the event line below it. */}
+				{/* Below lg the card dissolves so its strip, title and event line sit above the phone. */}
 				<div className="grid min-w-0 overflow-hidden rounded-2xl border border-(--rule-2) bg-(--sheet) max-lg:contents">
 					<ol aria-label="Job progress" className="flex border-b border-(--rule) max-lg:order-1">
 						{STEPS.map((s, i) => {
@@ -355,9 +355,6 @@ export function ClientDemo() {
 						<StatusBadge status={current.status}>{current.badge}</StatusBadge>
 					</div>
 
-					{/* Phones hide the title row, so the step narration sits here, above the phone. */}
-					<p className="text-sm text-(--ink-2) max-lg:order-2 md:hidden">{current.hint ?? current.event?.title}</p>
-
 					{/* Read-only: the script drives the ticks, so visitor input would fight it. */}
 					{/* Phones already show the line items on the portal screen above. */}
 					<fieldset disabled className="px-[22px] py-2 max-lg:hidden">
@@ -405,7 +402,7 @@ export function ClientDemo() {
 						</div>
 					</fieldset>
 
-					<div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-(--rule) bg-[color-mix(in_srgb,var(--paper)_60%,var(--sheet))] px-[22px] py-4 max-lg:order-4 max-lg:border-t-0">
+					<div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-(--rule) bg-[color-mix(in_srgb,var(--paper)_60%,var(--sheet))] px-[22px] py-4 max-lg:order-2 max-lg:border-t-0">
 						<div className="flex min-h-11 items-center">
 							{current.event ? (
 								<div className="flex items-start gap-2.5 transition-[opacity,translate] duration-240 ease-(--lp-ease) starting:translate-y-1.5 starting:opacity-0">

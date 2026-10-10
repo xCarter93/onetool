@@ -9,6 +9,10 @@ import { JOB, JOB_SUBTOTAL, JOB_TAX, JOB_TOTAL } from "./job";
 import { Scaled } from "./scaled";
 import { SIGNATURE } from "./signature";
 
+// Phones list the first lines and roll the rest into one row, so the subtotal still adds up.
+const PHONE_LINES = 3;
+const ROLLED_UP = JOB.lines.slice(PHONE_LINES);
+
 const QUOTE_STEPS = `${through(0, INVOICE_STEP - 1)} ${RESET_STEP}`;
 const INVOICE_STEPS = through(INVOICE_STEP);
 
@@ -88,11 +92,15 @@ export function JobStage() {
 				</p>
 				<ul className="lp-sheet-lines">
 					{JOB.lines.map((line, i) => (
-						<li key={line.id} style={{ "--i": i } as CSSProperties}>
+						<li key={line.id} data-rolled={i >= PHONE_LINES || undefined} style={{ "--i": i } as CSSProperties}>
 							<span>{line.name}</span>
 							<span>{formatCurrency(line.price)}</span>
 						</li>
 					))}
+					<li className="lp-sheet-more" style={{ "--i": PHONE_LINES } as CSSProperties}>
+						<span>{ROLLED_UP.length} more items</span>
+						<span>{formatCurrency(ROLLED_UP.reduce((sum, line) => sum + line.price, 0))}</span>
+					</li>
 				</ul>
 
 				<div className="lp-sheet-sum">

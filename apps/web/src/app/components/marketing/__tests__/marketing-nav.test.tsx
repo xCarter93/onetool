@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarketingNav } from "../marketing-nav";
 
@@ -19,7 +19,8 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-const trigger = () => screen.getByRole("button", { name: "Features" });
+// The mobile menu has its own Features disclosure, so scope to the desktop nav.
+const trigger = () => within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: "Features" });
 const panel = () => document.getElementById(trigger().getAttribute("aria-controls")!);
 const click = (detail: number) => act(() => void fireEvent.click(trigger(), { detail }));
 const finishFade = () =>

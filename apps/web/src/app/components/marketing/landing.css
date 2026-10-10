@@ -296,7 +296,8 @@ html:has(.dc-landing) {
 @media (max-width: 639px) {
 	.lp-how-frame { --w: 440; }
 	.lp-how-frame[data-how-scene="5"] { --h: 600; }
-	.lp-how-frame[data-how-scene="8"] { --h: 645; --s8-pad: 14px; --s8-scale: .66; --s8-left: 210px; --s8-h: 545px; }
+	/* Scaled so both action cards fit the canvas; titles land near 9px on a 375 phone. */
+	.lp-how-frame[data-how-scene="8"] { --h: 560; --s8-pad: 14px; --s8-scale: .54; --s8-left: 214px; --s8-h: 425px; }
 }
 
 /* Final CTA */
@@ -367,6 +368,7 @@ html:has(.dc-landing) {
 .lp-sheet-lines > li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
 .lp-sheet-lines > li > span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lp-sheet-lines > li > span:last-child { flex: none; color: var(--ink); }
+.lp-sheet-lines > .lp-sheet-more { display: none; }
 .lp-sheet-sum { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 13rem); align-items: center; gap: 16px; margin-top: 12px; }
 .lp-sheet-totals { grid-area: 1 / 2; display: grid; gap: 6px; }
 .lp-sheet-totals > div { display: flex; justify-content: space-between; gap: 12px; }
@@ -392,6 +394,8 @@ html:has(.dc-landing) {
 	.lp-sheet-event { margin-inline: -20px; padding-inline: 20px; }
 	.lp-sheet-sum { grid-template-columns: minmax(0, 1fr) minmax(0, 10.5rem); }
 	.lp-stamp { font-size: 24px; }
+	.lp-sheet-lines > [data-rolled] { display: none; }
+	.lp-sheet-lines > .lp-sheet-more { display: flex; }
 }
 
 .lp-job-phone { position: absolute; z-index: 2; right: 0; bottom: 32px; width: 184px; }

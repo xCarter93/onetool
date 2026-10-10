@@ -9,7 +9,6 @@ export function Feature({
 	label,
 	className,
 	stageClassName,
-	phoneText,
 	children,
 }: {
 	as?: "h3" | "h4";
@@ -19,8 +18,6 @@ export function Feature({
 	/** The panel is a picture of the product, not live UI, so assistive tech gets this summary instead. */
 	label: string;
 	stageClassName: string;
-	/** Under lg the panel goes and the cell is its title and body, so the phone tour keeps one exhibit per chapter. */
-	phoneText?: boolean;
 	children: ReactNode;
 }) {
 	return (
@@ -32,7 +29,6 @@ export function Feature({
 				aria-label={label}
 				className={cn(
 					"lp-feature-stage @container relative mt-4 min-w-0 overflow-hidden rounded-xl border border-(--rule-2) md:mt-6",
-					phoneText && "max-lg:hidden",
 					stageClassName
 				)}
 			>

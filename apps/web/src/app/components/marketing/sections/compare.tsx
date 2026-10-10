@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { formatCurrency } from "@/lib/money";
 import { BUSINESS_MONTHLY_USD, BUSINESS_YEARLY_USD } from "@/lib/plan-pricing";
@@ -19,6 +19,7 @@ import {
 	type CrewSize,
 	type FeatureCell,
 	type Vendor,
+	type VendorKey,
 } from "./competitor-data";
 import { useRevealOnce } from "../use-reveal-once";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -28,6 +29,7 @@ const pluralRules = new Intl.PluralRules("en-US");
 const people = (crew: number) =>
 	pluralRules.select(crew) === "one" ? PEOPLE.one : PEOPLE.other;
 
+const US = VENDORS.find((v) => v.isUs)!;
 const RIVALS = VENDORS.filter((v) => !v.isUs);
 
 const money = (n: number) => formatCurrency(n, { whole: true });
@@ -131,6 +133,32 @@ function CrewStepper({
 	);
 }
 
+function RivalPicker({ rival, onChange }: { rival: Vendor; onChange: (key: VendorKey) => void }) {
+	return (
+		<div className="grid gap-2">
+			<span id="compare-rival-label" className="text-sm font-medium text-(--ink-2)">
+				Compare with
+			</span>
+			<div role="group" aria-labelledby="compare-rival-label" className={SEGMENT_GROUP}>
+				{RIVALS.map((v) => {
+					const selected = v.key === rival.key;
+					return (
+						<button
+							key={v.key}
+							type="button"
+							aria-pressed={selected}
+							onClick={() => onChange(v.key)}
+							className={cn(SEGMENT, "px-1 text-sm", selected ? SEGMENT_ON : SEGMENT_OFF)}
+						>
+							{v.name}
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 function SavingsLine({ crew, rival }: { crew: CrewSize; rival: Vendor }) {
 	const quote = quoteFor(rival, crew);
 	const forCrew = `for ${crew} ${people(crew)}`;
@@ -193,84 +221,6 @@ function Cell({ v, className, children }: { v: Vendor; className?: string; child
 
 const HEAD_CELL =
 	"border-b border-(--rule) px-3 pb-3 pt-5 md:px-4 text-left align-bottom text-2xs font-semibold uppercase tracking-[0.08em] text-(--ink-3)";
-
-function ShortValue({ cell, v, crew }: { cell: FeatureCell; v: Vendor; crew: CrewSize }) {
-	if (cell.kind === "unpublished") return <span className="text-(--ink-3)">Not published</span>;
-	if (cell.kind === "soon") return <span className="text-(--ink-3)">Coming soon</span>;
-	if (cell.kind === "tier" && !tierIncluded(v, crew, cell)) {
-		return <span className="text-(--ink-3)">Needs {cell.label.replace(/ plan$/, "")}</span>;
-	}
-	if (cell.kind === "text") return <span>{cell.short ?? cell.label}</span>;
-	const note = cell.kind === "included" ? (cell.short ?? cell.label) : undefined;
-	return (
-		<span className="inline-flex flex-col items-center gap-0.5">
-			<Check aria-hidden="true" className="size-4 text-(--paid)" strokeWidth={2.5} />
-			<span className="sr-only">Included</span>
-			{note ? <span>{note}</span> : null}
-		</span>
-	);
-}
-
-const SHORT_CELL = "border-b border-(--rule) px-1 pb-3 pt-1 text-center align-top text-[13px] leading-[1.35] text-(--ink-2)";
-
-/** Phones: every vendor at once, label above its cells, so nothing hides behind a picker and the text stays readable. */
-function DifferencesGrid({ crew }: { crew: CrewSize }) {
-	return (
-		<table className="w-full table-fixed border-separate border-spacing-0">
-			<caption className="sr-only">Monthly price and included features by vendor for a crew of {crew}.</caption>
-			<thead className="sticky top-16 z-10 bg-(--sheet)">
-				<tr>
-					{VENDORS.map((v) => (
-						<th key={v.key} id={`cmp-v-${v.key}`} scope="col" className={cn(HEAD_CELL, "px-1 text-center tracking-[0.04em]", v.isUs && US_COLUMN)}>
-							{v.name}
-						</th>
-					))}
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-					<th id="cmp-f-price" colSpan={VENDORS.length} className="px-1 pb-1 pt-4 text-left text-sm font-medium text-(--ink)">
-						Monthly price for {crew} {people(crew)}
-					</th>
-				</tr>
-				<tr>
-					{VENDORS.map((v) => {
-						const quote = quoteFor(v, crew);
-						return (
-							<td key={v.key} headers={`cmp-f-price cmp-v-${v.key}`} className={cn(SHORT_CELL, v.isUs && US_COLUMN)}>
-								{quote ? (
-									<>
-										<span className="block text-base font-semibold tabular-nums text-(--ink)">{money(quote.monthly)}</span>
-										<span className="block text-2xs text-(--ink-3)">{quote.planName}</span>
-									</>
-								) : (
-									<span className="text-(--ink-3)">Not published</span>
-								)}
-							</td>
-						);
-					})}
-				</tr>
-				{FEATURE_ROWS.map((row, i) => (
-					<Fragment key={row.label}>
-						<tr>
-							{/* The label sits in its own row, so cells name it and the vendor by id instead of relying on scope. */}
-							<th id={`cmp-f-${i}`} colSpan={VENDORS.length} className="px-1 pb-1 pt-4 text-left text-sm font-medium text-(--ink)">
-								{row.label}
-							</th>
-						</tr>
-						<tr>
-							{VENDORS.map((v) => (
-								<td key={v.key} headers={`cmp-f-${i} cmp-v-${v.key}`} className={cn(SHORT_CELL, v.isUs && US_COLUMN)}>
-									<ShortValue cell={row.cells[v.key]} v={v} crew={crew} />
-								</td>
-							))}
-						</tr>
-					</Fragment>
-				))}
-			</tbody>
-		</table>
-	);
-}
 
 function LedgerTable({ crew, vendors }: { crew: CrewSize; vendors: Vendor[] }) {
 	const ref = useRef<HTMLDivElement>(null);
@@ -386,10 +336,13 @@ function Footnote() {
 
 export function Compare() {
 	const [crew, setCrew] = useState<CrewSize>(DEFAULT_CREW);
+	const [picked, setPicked] = useState<VendorKey | null>(null);
 	const cheapest = cheapestRival(crew);
 	const cheapestVendor = cheapest ? vendor(cheapest.key) : RIVALS[0];
 	// Server HTML carries both layouts (CSS picks one); after hydration only the matching one stays in the DOM.
 	const narrow = useMediaQuery("(max-width: 767px)");
+	// Only phones show the picker, so wider screens keep comparing against the cheapest rival.
+	const rival = narrow && picked ? vendor(picked) : cheapestVendor;
 
 	return (
 		<Section id="compare" scheme="sheet">
@@ -406,12 +359,13 @@ export function Compare() {
 			<div className="mt-[clamp(40px,6vw,80px)] grid gap-6">
 				<div className="grid gap-4">
 					<CrewStepper crew={crew} onChange={setCrew} />
-					<SavingsLine crew={crew} rival={cheapestVendor} />
+					<SavingsLine crew={crew} rival={rival} />
 				</div>
 
 				{narrow !== false && (
-					<div className="md:hidden">
-						<DifferencesGrid crew={crew} />
+					<div className="grid gap-4 md:hidden">
+						<RivalPicker rival={rival} onChange={setPicked} />
+						<LedgerTable crew={crew} vendors={[US, rival]} />
 					</div>
 				)}
 				{narrow !== true && (

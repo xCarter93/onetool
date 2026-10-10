@@ -92,7 +92,6 @@ function WinTheWork() {
 				</Feature>
 				<Feature
 					as="h4"
-					phoneText
 					title="One record per client"
 					body="Properties, past jobs, quotes and what they still owe, on one page for everyone you give access to."
 					label="Whitfield Property Group’s client record: two properties, a zero balance, and recent work including the approved fall cleanup quote and two paid invoices."
@@ -117,7 +116,6 @@ function RunTheDay() {
 			<div className={`lp-chapter-support grid ${GAP} md:grid-cols-2`}>
 				<Feature
 					as="h4"
-					phoneText
 					title="Every task has an owner"
 					body="Each project keeps its own task list. Give a task to a crew member and a day, and the overdue ones surface on their phone."
 					label="The task list for the Whitfield fall cleanup project: gate code confirmed by Dana Ruiz, brush haul-away overdue for Trevor Reed, before and after photos due today for Jess Okafor, and the invoice queued for Dana."
@@ -127,7 +125,6 @@ function RunTheDay() {
 				</Feature>
 				<Feature
 					as="h4"
-					phoneText
 					title="Move a job and the crew sees it"
 					body="Drag a visit to another day on the week calendar and your crew’s schedules change with it."
 					label="The week calendar for October 5 to 9, 2026, with the Dunmore gutter clearing moved from Wednesday to Thursday."
@@ -160,7 +157,6 @@ function GetPaid() {
 				</Feature>
 				<Feature
 					as="h4"
-					phoneText
 					title="Checks count too"
 					body="Got a check? Click Mark as Paid and the portal never asks for that money again. On Business, invoices sync to QuickBooks Online."
 					label="Kerr Road HOA’s Invoice INV-002085 for $825.00, marked paid on October 5, with its QuickBooks status reading Synced 1 day ago."
@@ -185,7 +181,6 @@ function FollowUp() {
 				{/* Fixed height so the arriving reply pushes the oldest thread out instead of growing the row. */}
 				<Feature
 					as="h4"
-					phoneText
 					title="Replies land on the right client"
 					body="A client’s reply to your quote or invoice comes back to its thread, in one inbox your whole team shares."
 					label="The shared inbox, where a reply from Dunmore Residence to Quote Q-001047 asks to move the job to Thursday."
@@ -195,7 +190,6 @@ function FollowUp() {
 				</Feature>
 				<Feature
 					as="h4"
-					phoneText
 					title="See which months paid best"
 					body="Start from Revenue by month or 15 other ready-made reports. October counts what’s paid so far, and clicking a month shows its invoices."
 					label="The Revenue by month report for 2026: paid invoices rise from $14,862 in January to a peak of $52,378 in September, with $18,593 so far in October. Total $339K."

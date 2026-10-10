@@ -29,10 +29,10 @@ export function FinalCta() {
 							<ArrowRight aria-hidden="true" size={18} />
 						</PrimaryButton>
 						<a
-							href="#how"
+							href="#book-a-demo"
 							className="inline-flex min-h-11 items-center self-start rounded-sm text-base font-semibold text-(--ink) underline decoration-current/40 underline-offset-4 transition-[text-decoration-color] hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current sm:self-auto"
 						>
-							See how it works
+							Book a demo
 						</a>
 					</div>
 				</Container>
