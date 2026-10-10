@@ -188,6 +188,8 @@ html:has(.dc-landing) {
 /* tan(atan2(a, b)) is a / b as a plain number: the box width over the design width. */
 .lp-scaled { position: relative; width: 100%; aspect-ratio: var(--w) / var(--h); overflow: hidden; container-type: inline-size; }
 .lp-scaled > div { position: absolute; left: 0; top: 0; width: calc(var(--w) * 1px); height: calc(var(--h) * 1px); transform-origin: 0 0; scale: tan(atan2(100cqw, calc(var(--w) * 1px))); }
+/* Safari 26 gets trig over container units wrong (the phone screen scaled to -0.08), so use typed division wherever it exists. */
+@supports (scale: calc(100cqw / 1px)) { .lp-scaled > div { scale: calc(100cqw / (var(--w) * 1px)); } }
 
 /* Page frame: rails half a gutter outside the content edge, with a cross where each section's top seam meets them. */
 @media (min-width: 768px) {
