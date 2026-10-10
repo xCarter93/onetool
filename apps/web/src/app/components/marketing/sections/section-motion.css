@@ -1,0 +1,46 @@
+/* Base rules carry no transform, so reduced motion and "Pause animations" fall back to the still layout. */
+
+@keyframes lp-final-settle {
+	from { scale: 1.08; }
+	to { scale: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	/* overflow:hidden makes each frame a scroll container, so a bare view() on the img would never progress. */
+	@supports (animation-timeline: view()) {
+		/* Below 1024px the photo is in-flow with overflow visible, so a scale would bleed. */
+		@media (min-width: 1024px) {
+			.lp-final-photo { view-timeline: --lp-final block; }
+			.lp-final-img {
+				animation: lp-final-settle linear both;
+				animation-timeline: --lp-final;
+				animation-range: entry 0% entry 100%;
+			}
+		}
+
+		.dc-landing[data-paused] .lp-final-img { animation: none; }
+	}
+
+	/* Starts part open so a fast scroll never meets an empty frame; waits for the decoded screenshot (crew-phone.tsx). */
+	.dc-landing:not([data-paused]) :is([data-reveal="pending"], [data-reveal="done"]:not([data-ready])) .lp-phone {
+		clip-path: inset(40% 0 0 0);
+		transform: translateY(6%);
+	}
+	[data-reveal="done"][data-ready] .lp-phone {
+		/* inset() can't interpolate to none. */
+		clip-path: inset(0);
+		transition: clip-path 750ms var(--ease-out-quint), transform 750ms var(--ease-out-quint);
+	}
+
+	.dc-landing:not([data-paused]) [data-reveal="pending"] .lp-check {
+		opacity: 0;
+		translate: 0 -5px;
+	}
+	[data-reveal="done"] .lp-check {
+		transition: opacity 320ms var(--ease-out-quint), translate 420ms var(--ease-out-quint);
+		transition-delay: calc(var(--i) * 50ms);
+	}
+
+	/* Pausing mid-entrance lands it. */
+	.dc-landing[data-paused] [data-reveal] :is(.lp-phone, .lp-check) { transition: none; }
+}

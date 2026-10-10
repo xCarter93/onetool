@@ -1,0 +1,48 @@
+/* Landing-only Tailwind entry: scans just the landing import graph; landing-css-sources.test.ts fails when a file is missing. */
+@layer theme, base, clerk, components, utilities;
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@import "../reui-nova.css";
+@import "../shared.css";
+
+@source "./layout.tsx";
+@source "./page.tsx";
+@source "../layout.tsx";
+@source "../components/marketing";
+@source not "../components/marketing/**/__tests__";
+@source not "../components/marketing/**/*.md";
+
+@source "../not-found.tsx";
+@source "../../components/shared/not-found-view.tsx";
+@source "../../components/charts/chart-stripe-defs.tsx";
+@source "../../components/domain/status-badge.tsx";
+@source "../../components/layout/nav-config.tsx";
+@source "../../components/layout/theme-switcher.tsx";
+@source "../../components/react-bits/square-matrix.tsx";
+@source "../../components/react-bits/tech-text.tsx";
+@source "../../components/reui/badge.tsx";
+@source "../../components/reui/phone-input.tsx";
+@source "../../components/ui/button.tsx";
+@source "../../components/ui/collapsible.tsx";
+@source "../../components/ui/combobox.tsx";
+@source "../../components/ui/dialog.tsx";
+@source "../../components/ui/input-group.tsx";
+@source "../../components/ui/input.tsx";
+@source "../../components/ui/iphone.tsx";
+@source "../../components/ui/label.tsx";
+@source "../../components/ui/modal.tsx";
+@source "../../components/ui/scroll-area.tsx";
+@source "../../components/ui/sonner.tsx";
+@source "../../components/ui/textarea.tsx";
+@source "../../hooks/use-media-query.ts";
+@source "../../hooks/use-toast.tsx";
+@source "../../lib/analytics-events.ts";
+@source "../../lib/analytics.ts";
+@source "../../lib/money.ts";
+@source "../../lib/plan-pricing.ts";
+@source "../../lib/promo.ts";
+@source "../../lib/site-url.ts";
+@source "../../lib/utils.ts";
+@source "../../providers/PostHogProvider.tsx";
+@source "../../providers/ThemeProvider.tsx";
+@source "../../remotion/scenes/routing-map-data.ts";

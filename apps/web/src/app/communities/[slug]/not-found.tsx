@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 /**
  * Catches `notFound()` for an unpublished or unknown slug. Deliberately
@@ -32,12 +31,13 @@ export default function CommunityPageNotFound() {
 				address.
 			</p>
 
-			<Link
+			{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load: the landing ships its own Tailwind sheet */}
+			<a
 				href="/"
 				className="mt-8 inline-flex min-h-11 items-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 			>
 				Go to OneTool
-			</Link>
+			</a>
 		</div>
 	);
 }

@@ -11,11 +11,7 @@ export function LaunchOfferNote() {
 	}
 
 	return (
-		<p className="mt-[14px] flex items-center gap-2 text-sm font-medium text-(--accent-ink)">
-			<span
-				aria-hidden="true"
-				className="h-[7px] w-[7px] flex-none rounded-full bg-(--accent)"
-			/>
+		<p className="mt-[14px] text-sm font-medium text-(--accent-ink)">
 			Launch offer: {LAUNCH_PROMO.headline}. Claim your code at signup.
 		</p>
 	);

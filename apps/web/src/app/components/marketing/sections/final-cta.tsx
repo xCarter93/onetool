@@ -1,150 +1,54 @@
-"use client";
-
-import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
-import { useTheme } from "next-themes";
-import { Eyebrow, GridBackdrop, Lede, Section } from "../primitives";
-import { AmbientLayer } from "../ambient";
-import { PrimaryButton, SecondaryButton } from "../marketing-nav";
-import { RoughMark } from "../rough-mark";
-import { usePrefersReducedMotion } from "../use-reduced-motion";
-
-const BlinkingSquares = dynamic(
-	() => import("@/components/react-bits/blinking-squares"),
-	{ ssr: false },
-);
-
-const RisingLines = dynamic(
-	() => import("@/components/react-bits/rising-lines"),
-	{ ssr: false },
-);
-
-const ScheduleDemoForm = dynamic(() =>
-	import("@/app/components/landing/schedule-demo-modal").then(
-		(m) => m.ScheduleDemoForm,
-	),
-);
-
-// Canvas colors cannot read CSS custom properties.
-const LATTICE_DARK = "#00a6f4";
-const LATTICE_LIGHT = "#0284c7";
-
-const GRID_CELL = 34;
-
-function NightLattice() {
-	const ref = useRef<HTMLDivElement>(null);
-	const [near, setNear] = useState(false);
-	const reduced = usePrefersReducedMotion();
-	const { resolvedTheme } = useTheme();
-
-	useEffect(() => {
-		const node = ref.current;
-		if (!node) return;
-		const io = new IntersectionObserver(
-			([entry]) => setNear(entry.isIntersecting),
-			{ rootMargin: "25% 0px" },
-		);
-		io.observe(node);
-		return () => io.disconnect();
-	}, []);
-
-	return (
-		<div
-			ref={ref}
-			aria-hidden="true"
-			className="pointer-events-none absolute inset-0 overflow-hidden rounded-[19px]"
-		>
-			{near && !reduced ? (
-				<BlinkingSquares
-					className="absolute inset-0"
-					direction="bottom"
-					cellSize={GRID_CELL}
-					squareColor={resolvedTheme === "dark" ? LATTICE_DARK : LATTICE_LIGHT}
-					/* Keep lit squares inside the grid rules. */
-					squareSize={0.94}
-					opacity={0.105}
-					intensity={1}
-					minBrightness={0.4}
-					twinkleSpeed={0.7}
-					twinkleStrength={0.9}
-					fadeStart={0.1}
-					fadeEnd={1}
-					falloff={2.2}
-					dpr={1.5}
-				/>
-			) : null}
-		</div>
-	);
-}
+import Image from "next/image";
+import { ArrowRight } from "lucide-react";
+import { DemoForm } from "../demo-form";
+import { PrimaryButton } from "../buttons";
+import { Container } from "../primitives";
 
 export function FinalCta() {
 	return (
-		<Section pad="tight" divider className="overflow-hidden">
-			<AmbientLayer
-				opacity={0.4}
-				fullBleed
-				className="mix-blend-multiply dark:mix-blend-normal"
-			>
-				<RisingLines
-					color="#4cc3f7"
-					horizonColor="#00a6f4"
-					haloColor="#bae6fd"
-					riseIntensity={0.6}
-					haloIntensity={3}
-					horizonIntensity={0.4}
+		<section className="lp-final" aria-labelledby="final-title">
+			<div className="lp-final-photo">
+				<Image
+					src="/landing/field/driveway.webp"
+					alt="Dusk from a work van parked outside a house, the dashboard phone showing the day’s summary in OneTool"
+					fill
+					sizes="100vw"
+					className="lp-final-img object-cover object-left"
 				/>
-			</AmbientLayer>
-
-			<div className="relative rounded-[20px] border border-(--rule-2) bg-(--sheet)">
-				<NightLattice />
-				<GridBackdrop
-					size={34}
-					mask="none"
-					opacity={0.5}
-					className="rounded-[19px]"
-				/>
-
-				<div className="relative grid items-center gap-[clamp(32px,4vw,60px)] px-[clamp(24px,4vw,64px)] py-[clamp(40px,6vw,80px)] lg:grid-cols-[1fr_minmax(0,440px)]">
-					<div className="max-w-[34rem]">
-						<h2 className="max-w-[18ch] text-[clamp(30px,4.4vw,54px)] font-semibold leading-[1.03] tracking-[-0.04em] text-balance">
-							Send your first quote{" "}
-							<RoughMark type="underline" className="whitespace-nowrap">
-								before lunch
-							</RoughMark>
-							.
-						</h2>
-
-						<Lede>
-							Add a client, build a quote, and send it for signature.
-							Your free account is ready as soon as you sign up.
-						</Lede>
-
-						<div className="mt-7 flex flex-wrap gap-3">
-							<PrimaryButton href="/sign-up">
-								Start free{" "}
-								<span aria-hidden="true" className="text-[15px]">
-									→
-								</span>
-							</PrimaryButton>
-							<SecondaryButton href="#day" className="bg-(--paper)">
-								See how it works
-							</SecondaryButton>
-						</div>
+				<Container className="lp-final-copy">
+					<h2 id="final-title" className="lp-h2">
+						<span className="block">The job&rsquo;s done.</span>
+						<span className="block">So is the paperwork.</span>
+					</h2>
+					<p className="lp-lede mt-4 max-w-[32rem]">
+						Start free in a couple of minutes. Add a client, send a quote and get it signed today.
+					</p>
+					<div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-7">
+						<PrimaryButton href="/sign-up">
+							Start free
+							<ArrowRight aria-hidden="true" size={18} />
+						</PrimaryButton>
+						<a
+							href="#how"
+							className="inline-flex min-h-11 items-center self-start rounded-sm text-base font-semibold text-(--ink) underline decoration-current/40 underline-offset-4 transition-[text-decoration-color] hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current sm:self-auto"
+						>
+							See how it works
+						</a>
 					</div>
-
-					<div
-						id="book-a-demo"
-						className="lp-form rounded-[14px] border border-(--rule-2) bg-(--paper) p-[clamp(20px,3vw,30px)]"
-					>
-						<Eyebrow>Book a demo</Eyebrow>
-						<p className="mt-3 text-[15px] leading-[1.6] text-(--ink-2) text-pretty">
-							Want a walkthrough instead? Leave your details and a real person
-							gets back to you within a day to find a time.
-						</p>
-						<ScheduleDemoForm idPrefix="final-cta-demo" className="mt-6" />
-					</div>
-				</div>
+				</Container>
 			</div>
-		</Section>
+
+			<Container className="lp-final-demo">
+				<div id="book-a-demo">
+					<h3 className="lp-h3">Book a walkthrough with our team.</h3>
+					<p className="mt-3 max-w-[26rem] text-base leading-relaxed text-(--ink-2)">
+						Leave your details and a real person gets back to you within a day to find a time.
+					</p>
+				</div>
+				<div className="lp-form">
+					<DemoForm idPrefix="final-cta-demo" layout="grid" />
+				</div>
+			</Container>
+		</section>
 	);
 }

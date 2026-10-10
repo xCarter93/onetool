@@ -1,3 +1,5 @@
+import "@/app/globals.css";
+import "@/app/app-theme.css";
 import { ReactNode } from "react";
 import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 

@@ -1,3 +1,5 @@
+// The landing entry, not the app one: Next preloads this boundary's stylesheets on every route, and / already loads it.
+import "@/app/(marketing)/marketing.css";
 import type { Metadata } from "next";
 import NotFoundView from "@/components/shared/not-found-view";
 

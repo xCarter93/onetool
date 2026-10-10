@@ -1,16 +1,8 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import StaggeredText from "@/components/react-bits/staggered-text";
-import { HeadingReveal } from "./heading-reveal";
+import { Check } from "lucide-react";
 
-/* Shared building blocks of the landing's paper-and-ink language. The type
- * scale lives HERE (SectionHeading/Lede/Eyebrow), not in section files, so
- * every section drifts together or not at all. Tokens come from landing.css
- * (`.dc-landing` scope); components reference them via Tailwind v4 var
- * utilities — `text-(--ink-2)`, never raw hex. */
-
-/** Entrance stagger — the comp's `animation-delay` on `.lp-rise`/`.lp-fade`. */
-export const at = (delay: string) => ({ "--lp-delay": delay }) as CSSProperties;
+/* Shared landing building blocks; the type scale lives in landing.css so every section moves together. */
 
 export function Container({
 	className,
@@ -20,15 +12,12 @@ export function Container({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn("mx-auto max-w-[1560px] px-[clamp(20px,4vw,40px)]", className)}>
+		<div className={cn("mx-auto max-w-[1560px] px-(--lp-gutter)", className)}>
 			{children}
 		</div>
 	);
 }
 
-/** Section shell: optional re-inking (Twenty's scheme pattern). Bands are
- * separated by scheme swaps by default; `divider` draws the hairline seam only
- * where two same-scheme sections meet. */
 export function Section({
 	id,
 	scheme = "paper",
@@ -39,12 +28,12 @@ export function Section({
 	children,
 }: {
 	id?: string;
-	scheme?: "paper" | "sheet" | "dark";
+	scheme?: "paper" | "sheet";
 	className?: string;
 	containerClassName?: string;
-	/** default = the comp's big section rhythm; tight = band rhythm; none = caller owns padding. */
+	/** none = the caller owns padding. */
 	pad?: "default" | "tight" | "none";
-	/** Hairline seam below — only for boundaries the scheme swap doesn't already draw. */
+	/** Only where two same-scheme sections meet; a scheme swap already reads as a seam. */
 	divider?: boolean;
 	children: ReactNode;
 }) {
@@ -55,7 +44,6 @@ export function Section({
 				"relative",
 				divider && "border-b border-(--rule)",
 				scheme === "sheet" && "bg-(--sheet)",
-				scheme === "dark" && "lp-scheme-dark",
 				className
 			)}
 		>
@@ -73,102 +61,39 @@ export function Section({
 	);
 }
 
-/** Mono eyebrow with the 14×7 accent marker — every section opens with one. */
-export function Eyebrow({
-	children,
-	tone = "accent",
-	className,
-}: {
-	children: ReactNode;
-	tone?: "accent" | "dim";
-	className?: string;
-}) {
-	return (
-		<p
-			className={cn(
-				"inline-flex items-center gap-[9px] font-mono text-[11.5px] font-medium uppercase tracking-[0.06em]",
-				tone === "accent" ? "text-(--accent-ink)" : "text-(--ink-3)",
-				className
-			)}
-		>
-			<span
-				aria-hidden="true"
-				className="inline-block h-[7px] w-[14px] flex-none rounded-[1px] bg-(--accent)"
-			/>
-			{children}
-		</p>
-	);
-}
-
-/** Section H2. lg = major section, md = band, sm = utility section.
- * Headings reveal on scroll-into-view: plain-string children get the staggered
- * word reveal, JSX children (RoughMark etc.) get the matched block reveal.
- * `reveal={false}` for headings that already animate (hero's lp-rise). */
 export function SectionHeading({
 	as: Tag = "h2",
 	size = "lg",
 	className,
-	reveal = true,
 	children,
 }: {
 	as?: "h1" | "h2" | "h3";
 	size?: "lg" | "md" | "sm";
 	className?: string;
-	reveal?: boolean;
-	children: ReactNode;
-}) {
-	const scale = cn(
-		"mt-4 font-semibold text-balance",
-		size === "lg" &&
-			"text-[clamp(34px,4.8vw,60px)] leading-[1.03] tracking-[-0.038em] max-w-[20ch]",
-		size === "md" &&
-			"text-[clamp(30px,4vw,52px)] leading-[1.05] tracking-[-0.035em] max-w-[22ch]",
-		size === "sm" &&
-			"text-[clamp(25px,3vw,38px)] leading-[1.08] tracking-[-0.03em]",
-		className
-	);
-
-	if (reveal && typeof children === "string") {
-		return (
-			<StaggeredText
-				text={children}
-				as={Tag}
-				segmentBy="words"
-				delay={45}
-				duration={0.6}
-				className={scale}
-			/>
-		);
-	}
-
-	return (
-		<Tag className={scale}>
-			{reveal ? <HeadingReveal>{children}</HeadingReveal> : children}
-		</Tag>
-	);
-}
-
-/** Supporting paragraph under a heading. */
-export function Lede({
-	className,
-	children,
-}: {
-	className?: string;
 	children: ReactNode;
 }) {
 	return (
-		<p
+		<Tag
 			className={cn(
-				"mt-3 text-[clamp(16.5px,1.3vw,18px)] leading-[1.6] text-(--ink-2) text-pretty",
+				"mt-4",
+				size === "sm" ? "lp-h2-sm" : "lp-h2",
+				size === "lg" ? "max-w-[18ch]" : "max-w-[22ch]",
 				className
 			)}
 		>
 			{children}
-		</p>
+		</Tag>
 	);
 }
 
-/** ✓ trust/benefit row item. */
+export function Em({ children }: { children: ReactNode }) {
+	return <span className="lp-em">{children}</span>;
+}
+
+export function Lede({ className, children }: { className?: string; children: ReactNode }) {
+	return <p className={cn("lp-lede mt-4", className)}>{children}</p>;
+}
+
 export function CheckItem({
 	children,
 	className,
@@ -180,74 +105,13 @@ export function CheckItem({
 }) {
 	return (
 		<li className={cn("flex items-center gap-[7px] text-sm text-(--ink-2)", className)}>
-			<span
+			<Check
 				aria-hidden="true"
-				className={cn(
-					"font-bold",
-					tone === "paid" ? "text-(--paid)" : "text-(--ink-3)"
-				)}
-			>
-				✓
-			</span>
+				size={16}
+				strokeWidth={2.5}
+				className={cn("mt-[calc((1lh-1rem)/2)] flex-none self-start", tone === "paid" ? "text-(--paid)" : "text-(--ink-3)")}
+			/>
 			{children}
 		</li>
-	);
-}
-
-/** Faint construction-grid backdrop. One per section at most; always masked. */
-export function GridBackdrop({
-	size = 64,
-	mask = "radial-gradient(120% 80% at 78% 22%, #000 0%, transparent 60%)",
-	opacity = 0.5,
-	className,
-}: {
-	size?: number;
-	mask?: string;
-	opacity?: number;
-	className?: string;
-}) {
-	const style: CSSProperties = {
-		backgroundImage:
-			"linear-gradient(to right, var(--rule) 1px, transparent 1px), linear-gradient(to bottom, var(--rule) 1px, transparent 1px)",
-		backgroundSize: `${size}px ${size}px`,
-		WebkitMaskImage: mask,
-		maskImage: mask,
-		opacity,
-	};
-	return (
-		<div
-			aria-hidden="true"
-			className={cn("pointer-events-none absolute inset-0", className)}
-			style={style}
-		/>
-	);
-}
-
-/** Card-header eyebrow row used by the What's-inside cards. */
-export function CardEyebrowRow({
-	label,
-	index,
-	className,
-}: {
-	label: ReactNode;
-	index: string;
-	className?: string;
-}) {
-	return (
-		<div
-			className={cn(
-				"flex items-center justify-between gap-3 border-b border-(--rule) px-[22px] py-[13px]",
-				className
-			)}
-		>
-			<span className="inline-flex items-center gap-[9px] font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-(--accent-ink)">
-				<span
-					aria-hidden="true"
-					className="h-[7px] w-[14px] flex-none rounded-[1px] bg-(--accent)"
-				/>
-				{label}
-			</span>
-			<span className="font-mono text-[11px] tabular-nums text-(--ink-3)">{index}</span>
-		</div>
 	);
 }

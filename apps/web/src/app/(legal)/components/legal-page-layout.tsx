@@ -30,7 +30,8 @@ export function LegalPageLayout({
 				<div className="mx-auto max-w-6xl px-6 lg:px-8">
 					<div className="flex h-16 items-center justify-between">
 						{/* Logo */}
-						<Link
+						{/* eslint-disable-next-line @next/next/no-html-link-for-pages -- full page load: the landing ships its own Tailwind sheet */}
+						<a
 							href="/"
 							className="flex items-center gap-2 transition-opacity hover:opacity-80"
 						>
@@ -41,7 +42,7 @@ export function LegalPageLayout({
 								height={150}
 								className="dark:brightness-0 dark:invert"
 							/>
-						</Link>
+						</a>
 
 						{/* Desktop Navigation */}
 						<nav className="hidden sm:flex items-center gap-1">

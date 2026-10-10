@@ -1,307 +1,257 @@
 "use client";
 
-import { useState } from "react";
-import { usePlans } from "@clerk/nextjs/experimental";
+import { useState, type ReactNode } from "react";
+import { ArrowRight, Check } from "lucide-react";
+import { formatCurrency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { LAUNCH_PROMO, useLaunchPromoActive } from "@/lib/promo";
-import { CheckItem, Eyebrow, Lede, Section, SectionHeading } from "../primitives";
-import { PrimaryButton, SecondaryButton } from "../marketing-nav";
-import { AmbientLayer } from "../ambient";
-import { PricingHalftoneScene } from "../section-halftone-scenes";
-import { RoughMark } from "../rough-mark";
-import {
-	BUSINESS_SEATS,
-	FREE_SEATS,
-	PLAN_MATRIX,
-} from "@onetool/backend/convex/lib/planMatrix";
+import { BUSINESS_MONTHLY_USD, BUSINESS_YEARLY_USD } from "@/lib/plan-pricing";
+import { Halftone } from "../halftone";
+import { Lede, Section, SectionHeading } from "../primitives";
+import { PrimaryButton, SecondaryButton } from "../buttons";
+import { PLAN_MATRIX, type PlanMatrixRow } from "@onetool/backend/convex/lib/planMatrix";
 
-const matrixValue = (key: string, plan: "free" | "business"): string => {
-	const row = PLAN_MATRIX.find((r) => r.key === key);
-	if (!row) throw new Error(`PLAN_MATRIX row missing: ${key}`);
-	return String(row[plan]);
-};
-
-const FREE_FEATURES = [
-	"Unlimited clients and projects",
-	`${FREE_SEATS} team members`,
-	`${matrixValue("clientSends", "free")} quote and invoice sends a month, +10 in months you collect a payment`,
-	`${matrixValue("esignatures", "free")} e-signature requests a month`,
-	`AI assistant, ${matrixValue("assistantMessages", "free")} messages a day`,
-	`${matrixValue("savedReports", "free")} saved custom reports`,
-	`AI client import, up to ${Number(matrixValue("importedRows", "free")).toLocaleString("en-US")} rows`,
-	"Online card payments through Stripe",
-];
-
-const BUSINESS_FEATURES = [
-	`${BUSINESS_SEATS} team members`,
-	"Unlimited sends and e-signatures",
-	"Unlimited AI messages, reports and imports",
-];
-
-const BUSINESS_ADD_LABELS: Record<string, string> = {
+// Landing wording per matrix key; values always come from PLAN_MATRIX so the two can't drift.
+const LABELS: Record<string, string> = {
+	clients: "Clients",
+	orgMembers: "Team members",
+	clientSends: "Quote and invoice sends a month",
+	esignatures: "E-signature requests a month",
+	assistantMessages: "AI assistant messages a day",
+	savedReports: "Saved reports",
+	importedRows: "AI client import rows, total",
 	automationPublish: "Workflow automations",
-	routing: "Route optimization for the day's jobs",
+	routing: "Route optimization",
 	quickbooks: "QuickBooks sync",
 	nlReportGeneration: "AI report generation",
-	portalBadgeRemoval: "Remove the OneTool badge from your client portal",
+	portalBadgeRemoval: "Client portal without the OneTool badge",
+	stripeConnect: "Card payments and Stripe payouts",
+	supportSla: "Support replies",
 };
 
-const BUSINESS_INCLUDES = [
-	...PLAN_MATRIX.filter((row) => row.business === true && row.free === false).map(
-		(row) => BUSINESS_ADD_LABELS[row.key] ?? row.label
-	),
-	"Priority support with 24-hour SLAs",
-];
+// Rows the usage rows already cover, plus two minor ones the landing does not need to list.
+const SKIP = new Set(["aiAssistant", "llmCsvImport", "activeProjectsPerClient", "customSkus", "orgDocuments"]);
 
-const FALLBACK_MONTHLY = 30;
-const FALLBACK_YEARLY = 300;
+const ORDER: PlanMatrixRow["category"][] = ["Core usage", "Business tools", "Support"];
+const ROWS = ORDER.flatMap((category) => PLAN_MATRIX.filter((row) => row.category === category && !SKIP.has(row.key)));
 
-const trimCents = (formatted: string) => formatted.replace(/\.00$/, "");
+const YEAR_OF_MONTHS = BUSINESS_MONTHLY_USD * 12;
+const SAVING_PCT =
+	BUSINESS_YEARLY_USD < YEAR_OF_MONTHS
+		? Math.round((1 - BUSINESS_YEARLY_USD / YEAR_OF_MONTHS) * 100)
+		: 0;
 
-function useBusinessPrice() {
-	const { data: plans, isLoading } = usePlans({ for: "organization", enabled: true });
+const PLAN_LABEL = "text-xs font-semibold uppercase tracking-[0.08em] text-(--ink-3)";
+const CELL = "border-b border-(--rule) px-3 py-[9px] align-middle md:px-5";
+const BUSINESS_COLUMN = "border-l border-l-(--rule-3) bg-(--accent-wash)";
 
-	const paidPlans = !isLoading && plans ? plans.filter((plan) => plan.hasBaseFee) : [];
-	const business =
-		paidPlans.find((plan) => plan.name?.toLowerCase().includes("business")) ?? paidPlans[0];
-
-	const fee = business?.fee;
-	const annualFee = business?.annualFee;
-
-	// Do not mix live and fallback prices in the savings calculation.
-	if (!fee || !annualFee) {
-		return {
-			symbol: "$",
-			monthly: String(FALLBACK_MONTHLY),
-			yearly: String(FALLBACK_YEARLY),
-			monthlyMinor: FALLBACK_MONTHLY * 100,
-			yearlyMinor: FALLBACK_YEARLY * 100,
-		};
+function Value({ value }: { value: string | boolean }) {
+	if (value === true) {
+		return (
+			<span className="inline-flex items-center text-(--paid)">
+				<Check aria-hidden="true" className="size-4" strokeWidth={2.5} />
+				<span className="sr-only">Included</span>
+			</span>
+		);
 	}
-
-	return {
-		symbol: fee.currencySymbol ?? annualFee.currencySymbol ?? "$",
-		monthly: trimCents(fee.amountFormatted),
-		yearly: trimCents(annualFee.amountFormatted),
-		monthlyMinor: fee.amount,
-		yearlyMinor: annualFee.amount,
-	};
+	if (value === false) {
+		return (
+			<span className="text-(--ink-3)">
+				<span aria-hidden="true">–</span>
+				<span className="sr-only">Not included</span>
+			</span>
+		);
+	}
+	const n = Number(value);
+	return <span className="tabular-nums">{Number.isNaN(n) ? value : n.toLocaleString("en-US")}</span>;
 }
 
-const PLAN_ITEM = "items-start gap-[11px] text-[15px]";
-const GROUP_LABEL =
-	"text-[11px] font-semibold uppercase tracking-[0.12em] text-(--ink-3)";
-const GROUP = "border-t border-(--rule) pt-5";
+type Plan = {
+	key: string;
+	name: string;
+	price: string;
+	unit: string;
+	note: string;
+	phoneNote: string;
+	business?: boolean;
+	toggle?: ReactNode;
+	button: ReactNode;
+};
 
-function BillingToggle({
-	annual,
-	onChange,
-	savingPct,
-}: {
-	annual: boolean;
-	onChange: (annual: boolean) => void;
-	savingPct: number;
-}) {
-	const tab = (isActive: boolean) =>
-		cn(
-			"cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)",
-			isActive ? "bg-(--sheet) text-(--ink)" : "text-(--ink-3) hover:text-(--ink-2)"
-		);
-
+function PriceLine({ price, unit }: { price: string; unit: string }) {
 	return (
-		<div
-			role="group"
-			aria-label="Billing period"
-			className="inline-flex flex-none rounded-[11px] border border-(--rule-2) bg-(--paper) p-1"
-		>
-			<button
-				type="button"
-				aria-pressed={!annual}
-				onClick={() => onChange(false)}
-				className={tab(!annual)}
-			>
+		<p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
+			<span className="lp-price text-(--ink)">{price}</span>
+			<span className="text-sm text-(--ink-2)">{unit}</span>
+		</p>
+	);
+}
+
+function BillingToggle({ yearly, onChange }: { yearly: boolean; onChange: (yearly: boolean) => void }) {
+	const tab = (active: boolean) =>
+		cn(
+			"min-h-8 cursor-pointer rounded-md px-2.5 text-xs font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent-ink)",
+			active ? "bg-(--sheet) text-(--ink) shadow-(--lp-shadow)" : "text-(--ink-3) hover:text-(--ink-2)",
+		);
+	return (
+		<div role="group" aria-label="Billing period" className="inline-flex rounded-lg border border-(--rule-2) bg-(--paper) p-0.5">
+			<button type="button" aria-pressed={!yearly} onClick={() => onChange(false)} className={tab(!yearly)}>
 				Monthly
 			</button>
-			<button
-				type="button"
-				aria-pressed={annual}
-				onClick={() => onChange(true)}
-				className={tab(annual)}
-			>
+			<button type="button" aria-pressed={yearly} onClick={() => onChange(true)} className={tab(yearly)}>
 				Yearly
-				{savingPct > 0 && (
-					<span className="font-medium text-(--ink-3)"> · save {savingPct}%</span>
-				)}
+				{SAVING_PCT > 0 && <span className="font-medium text-(--accent-ink)"> −{SAVING_PCT}%</span>}
 			</button>
 		</div>
 	);
 }
 
+/* Phones: the table's label column would squeeze the plans to 29% each, so the summaries sit above it at full width. */
+function PhonePlans({ plans }: { plans: Plan[] }) {
+	return (
+		<div className="grid grid-cols-2 gap-3 md:hidden">
+			{plans.map((plan) => (
+				<div
+					key={plan.key}
+					className={cn(
+						"flex flex-col rounded-xl border border-(--rule-2) bg-(--sheet) p-4",
+						plan.business && "border-(--rule-3) bg-(--accent-wash)",
+					)}
+				>
+					<p className={PLAN_LABEL}>{plan.name}</p>
+					<PriceLine price={plan.price} unit={plan.unit} />
+					<p className="mt-1.5 text-xs leading-[1.4] text-(--ink-2)">{plan.phoneNote}</p>
+					{plan.toggle && <div className="mt-3">{plan.toggle}</div>}
+					<div className="mt-auto">{plan.button}</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function PlanHead({ plan }: { plan: Plan }) {
+	return (
+		<th
+			scope="col"
+			className={cn(
+				"border-b border-(--rule) px-3 pb-3 pt-5 text-left align-top font-normal md:pb-5 md:px-5",
+				plan.business && cn(BUSINESS_COLUMN, "rounded-t-xl border-t border-r border-(--rule-3)"),
+			)}
+		>
+			<div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+				<p className={PLAN_LABEL}>{plan.name}</p>
+				{plan.toggle && <div className="hidden md:block">{plan.toggle}</div>}
+			</div>
+			<div className="hidden md:block">
+				<PriceLine price={plan.price} unit={plan.unit} />
+				<p className="mt-2 text-sm leading-[1.5] text-pretty text-(--ink-2)">{plan.note}</p>
+				<div className="mt-4">{plan.button}</div>
+			</div>
+		</th>
+	);
+}
+
 export function Pricing() {
-	const [annual, setAnnual] = useState(false);
 	const promoActive = useLaunchPromoActive();
-	const { symbol, monthly, yearly, monthlyMinor, yearlyMinor } = useBusinessPrice();
-
-	const yearOfMonths = monthlyMinor * 12;
-	const savingPct =
-		yearOfMonths > 0 && yearlyMinor < yearOfMonths
-			? Math.round((1 - yearlyMinor / yearOfMonths) * 100)
-			: 0;
-
-	const price = `${symbol}${annual ? yearly : monthly}`;
-	const priceUnit = annual ? "/ year" : "/ month";
-	const priceNote = annual
-		? `Works out at ${symbol}${Math.round(yearlyMinor / 12 / 100)} a month${
-				savingPct > 0 ? `, saving ${savingPct}%` : ""
-			}.`
-		: `Per organisation, ${BUSINESS_SEATS} seats included. Cancel any time.`;
+	const [yearly, setYearly] = useState(false);
+	const perMonth = formatCurrency(BUSINESS_YEARLY_USD / 12, { whole: true });
+	const saving = SAVING_PCT > 0 ? `, ${SAVING_PCT}% less` : "";
+	const plans: Plan[] = [
+		{
+			key: "free",
+			name: "Free",
+			price: formatCurrency(0, { whole: true }),
+			unit: "/ month",
+			note: "Enough for a one-van operation. No time limit.",
+			phoneNote: "No time limit",
+			button: (
+				<SecondaryButton href="/sign-up" className="w-full justify-center whitespace-nowrap">
+					Start free
+				</SecondaryButton>
+			),
+		},
+		{
+			key: "business",
+			name: "Business",
+			price: formatCurrency(yearly ? BUSINESS_YEARLY_USD : BUSINESS_MONTHLY_USD, { whole: true }),
+			unit: yearly ? "/ year" : "/ month",
+			note: yearly
+				? `Works out at ${perMonth} a month${saving}. No monthly limits.`
+				: "One flat price per organization. No monthly limits.",
+			phoneNote: yearly ? `${perMonth} a month, billed yearly` : "No monthly limits",
+			business: true,
+			toggle: <BillingToggle yearly={yearly} onChange={setYearly} />,
+			button: (
+				<PrimaryButton href="/sign-up" className="w-full justify-center whitespace-nowrap">
+					Start free
+					<ArrowRight aria-hidden="true" className="size-4 shrink-0 max-md:hidden" />
+				</PrimaryButton>
+			),
+		},
+	];
 
 	return (
-		<Section id="pricing" scheme="sheet" className="overflow-hidden">
-
-			<AmbientLayer fullBleed opacity={0.7}>
-				<PricingHalftoneScene />
-			</AmbientLayer>
-
-			<div className="relative">
-				<div>
-					<SectionHeading className="mt-0 max-w-[16ch]">
-						<RoughMark type="highlight">Free</RoughMark> until you outgrow it.
-					</SectionHeading>
-					<Lede className="max-w-[34rem]">
-						Try Business for 14 days without a card. Then stay on Free, or upgrade
-						when your crew needs more. Want a walkthrough?{" "}
-						<a
-							href="#book-a-demo"
-							className="font-medium text-(--accent-ink) underline-offset-2 transition-colors hover:text-(--ink) hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-ink)"
-						>
-							book a demo
-						</a>{" "}
-						and we&rsquo;ll get in touch.
-					</Lede>
-				</div>
+		<Section id="pricing">
+			<div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+				<SectionHeading className="mt-0 max-w-[22ch]">
+					Free for a one‑van shop. One flat price for the crew.
+				</SectionHeading>
+				<Lede className="mt-0 max-w-[30rem]">
+					Try Business for 14 days without a card. Keep Free, or pay the flat price when the
+					monthly limits get in the way.
+				</Lede>
 			</div>
 
-			<div className="relative mx-auto mt-[clamp(40px,6vw,80px)] max-w-[64rem]">
-				<div className="mb-4 flex justify-center">
-					<BillingToggle
-						annual={annual}
-						onChange={setAnnual}
-						savingPct={savingPct}
-					/>
+			<div className="mt-[clamp(40px,6vw,80px)]">
+				<div>
+					<PhonePlans plans={plans} />
+					<table className="mt-5 w-full table-fixed border-separate border-spacing-0 md:mt-0">
+						<caption className="sr-only">What the Free and Business plans include.</caption>
+						<colgroup>
+							<col className="w-[42%] md:w-[40%]" />
+							<col className="w-[29%] md:w-[30%]" />
+							<col className="w-[29%] md:w-[30%]" />
+						</colgroup>
+						<thead>
+							<tr>
+								<th scope="col" className="border-b border-(--rule) align-bottom">
+									<span className="sr-only">Plan</span>
+									<Halftone scene="vans" className="lp-pricing-art" />
+								</th>
+								{plans.map((plan) => (
+									<PlanHead key={plan.key} plan={plan} />
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{ROWS.map((row) => (
+								<tr key={row.key}>
+									<th scope="row" className={cn(CELL, "text-left text-sm font-normal text-(--ink-2)")}>
+										{LABELS[row.key] ?? row.label}
+									</th>
+									<td className={cn(CELL, "text-sm text-(--ink)")}>
+										<Value value={row.free} />
+									</td>
+									<td className={cn(CELL, BUSINESS_COLUMN, "text-sm text-(--ink)")}>
+										<Value value={row.business} />
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<p className="mt-4 text-xs leading-[1.65] text-(--ink-2)">
+						Card payments cost your Stripe rate plus {formatCurrency(1, { whole: true })} per payment. Free
+						gets 10 extra sends in any month you collect one. Everything you add during the trial stays.
+					</p>
+					{promoActive && (
+						<p className="mt-2 text-sm font-medium text-(--accent-ink)">
+							Launch offer: {LAUNCH_PROMO.monthly.label.toLowerCase()} on monthly,{" "}
+							{LAUNCH_PROMO.annual.label.toLowerCase()} on yearly. Claim your code at signup. Ends{" "}
+							{LAUNCH_PROMO.endsLabel}.
+						</p>
+					)}
 				</div>
-				<div className="grid gap-4 md:grid-cols-2 md:grid-rows-[repeat(4,auto)] md:gap-x-6 md:gap-y-5">
-					<div className="lp-lift grid content-start gap-5 rounded-2xl border border-(--rule-2) bg-(--paper) p-[clamp(24px,3vw,36px)] md:col-start-1 md:row-span-4 md:row-start-1 md:grid-rows-subgrid">
-						<div>
-							<p className="flex min-h-7 items-center text-[12px] font-semibold uppercase tracking-[0.1em] text-(--ink-3)">
-								Free
-							</p>
-							<p className="mt-3 text-[15px] leading-[1.55] text-(--ink-2) md:min-h-[4.65em] lg:min-h-[3.1em]">
-								Enough to run a one-van operation and see if this fits.
-							</p>
-							<p className="mt-[18px] flex items-baseline gap-2">
-								<span className="text-[clamp(38px,4.6vw,54px)] font-semibold leading-none tracking-[-0.04em] tabular-nums">
-									$0
-								</span>
-								<span className="text-base text-(--ink-2)">{priceUnit}</span>
-							</p>
-							<p className="mt-[10px] text-[15px] text-(--ink-2)">
-								Starts with a 14-day trial of Business. Free forever after, no card
-								required.
-							</p>
-						</div>
 
-						<SecondaryButton
-							href="/sign-up"
-							className="h-12 w-full justify-center text-base font-semibold"
-						>
-							Start free
-						</SecondaryButton>
-
-						<div className={`${GROUP} md:row-span-2`}>
-							<p className={GROUP_LABEL}>What you get</p>
-							<ul className="mt-4 grid gap-[11px]">
-								{FREE_FEATURES.map((item) => (
-									<CheckItem key={item} tone="dim" className={PLAN_ITEM}>
-										{item}
-									</CheckItem>
-								))}
-							</ul>
-						</div>
-					</div>
-
-					<div className="lp-lift relative grid content-start gap-5 rounded-2xl border border-(--rule-3) bg-(--paper) p-[clamp(24px,3vw,36px)] md:col-start-2 md:row-span-4 md:row-start-1 md:grid-rows-subgrid">
-						<div
-							aria-hidden="true"
-							className="pointer-events-none absolute inset-0 rounded-2xl"
-							style={{
-								background:
-									"linear-gradient(160deg,var(--accent-wash),transparent 46%)",
-							}}
-						/>
-
-						<div className="relative">
-							<div className="flex min-h-7 flex-wrap items-center justify-between gap-3">
-								<Eyebrow>Business</Eyebrow>
-								<span className="rounded-full border border-(--accent) bg-(--accent-wash) px-[11px] py-[5px] text-[10px] font-semibold uppercase leading-none tracking-[0.14em] text-(--accent-ink)">
-									For growing crews
-								</span>
-							</div>
-							<p className="mt-3 text-[15px] leading-[1.55] text-(--ink-2) md:min-h-[4.65em] lg:min-h-[3.1em]">
-								Room for a growing crew: no usage meters, and up to 20 people
-								on one flat price.
-							</p>
-							<p className="mt-[18px] flex items-baseline gap-2">
-								<span className="text-[clamp(38px,4.6vw,54px)] font-semibold leading-none tracking-[-0.04em] tabular-nums">
-									{price}
-								</span>
-								<span className="text-base text-(--ink-2)">{priceUnit}</span>
-							</p>
-							<p className="mt-[10px] text-[15px] text-(--ink-2)">{priceNote}</p>
-							{promoActive && (
-								<p className="mt-[10px] text-[15px] font-medium text-(--accent-ink)">
-									Launch offer:{" "}
-									{annual
-										? LAUNCH_PROMO.annual.label.toLowerCase()
-										: LAUNCH_PROMO.monthly.label.toLowerCase()}
-									. Claim your code at signup. Ends {LAUNCH_PROMO.endsLabel}.
-								</p>
-							)}
-						</div>
-
-						<PrimaryButton
-							href="/sign-up"
-							className="relative h-12 w-full justify-center text-base"
-						>
-							Start free
-							<span aria-hidden="true" className="text-sm">
-								→
-							</span>
-						</PrimaryButton>
-
-						<div className={`relative ${GROUP}`}>
-							<p className={GROUP_LABEL}>What you get</p>
-							<ul className="mt-4 grid gap-[11px]">
-								{BUSINESS_FEATURES.map((item) => (
-									<CheckItem key={item} className={PLAN_ITEM}>
-										{item}
-									</CheckItem>
-								))}
-							</ul>
-						</div>
-
-						<div className={`relative ${GROUP}`}>
-							<p className={GROUP_LABEL}>Everything in Free, plus</p>
-							<ul className="mt-4 grid gap-[11px]">
-								{BUSINESS_INCLUDES.map((item) => (
-									<CheckItem key={item} className={PLAN_ITEM}>
-										{item}
-									</CheckItem>
-								))}
-							</ul>
-						</div>
-					</div>
-				</div>
 			</div>
 		</Section>
 	);

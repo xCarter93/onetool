@@ -74,6 +74,20 @@ const liveTransientIds = new Set<string>();
 // own string ids instead so dismiss/update round-trip.
 let toastIdCounter = 0;
 
+// Toasts fired with no Toaster mounted are silently dropped by sonner.
+let toasterMounted = false;
+let warnedNoToaster = false;
+
+function warnIfNoToaster() {
+	if (process.env.NODE_ENV !== "development" || toasterMounted || warnedNoToaster) {
+		return;
+	}
+	warnedNoToaster = true;
+	console.warn(
+		"useToast: no Toaster was mounted when this toast fired, so it was dropped. Check the route group layout has a <ToastProvider>."
+	);
+}
+
 function show(
 	type: NotificationType,
 	title: string,
@@ -82,6 +96,7 @@ function show(
 ): string {
 	const duration = options?.duration ?? DEFAULT_DURATION[type];
 	const id = `ot-toast-${++toastIdCounter}`;
+	warnIfNoToaster();
 	sonnerToast[type](title, {
 		id,
 		description: options?.message ?? message,
@@ -130,9 +145,7 @@ interface ToastProviderProps {
 	maxToasts?: number;
 }
 
-// Sonner's toast store is a global singleton: nested providers (root layout
-// AND portal layout both mount one) must not each render a Toaster, or every
-// toast appears twice. Only the outermost provider mounts it.
+// Sonner's store is a global singleton: only the outermost provider renders a Toaster, or toasts appear twice.
 const HasToasterContext = createContext(false);
 
 export const ToastProvider: React.FC<ToastProviderProps> = ({
@@ -143,6 +156,14 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({
 	const hasAncestorToaster = useContext(HasToasterContext);
 	const pathname = usePathname();
 	const previousPathname = useRef(pathname);
+
+	useEffect(() => {
+		if (hasAncestorToaster) return;
+		toasterMounted = true;
+		return () => {
+			toasterMounted = false;
+		};
+	}, [hasAncestorToaster]);
 
 	useEffect(() => {
 		if (hasAncestorToaster) return;

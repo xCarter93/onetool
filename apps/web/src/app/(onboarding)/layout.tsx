@@ -1,7 +1,10 @@
+import "@/app/globals.css";
+import "@/app/app-theme.css";
 import type { ReactNode } from "react";
 import { ClerkProviderWithTheme } from "@/providers/ClerkProviderWithTheme";
 import ConvexClientProvider from "@/providers/ConvexClientProvider";
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog";
+import { ToastProvider } from "@/hooks/use-toast";
 import { AnalyticsIdentity } from "@/components/analytics-identity";
 
 // Full-screen onboarding shell: same providers as the workspace, minus the
@@ -13,13 +16,15 @@ export default function OnboardingLayout({
 	children: ReactNode;
 }) {
 	return (
-		<ClerkProviderWithTheme>
-			<ConvexClientProvider>
-				<ConfirmDialogProvider>
-					<AnalyticsIdentity />
-					{children}
-				</ConfirmDialogProvider>
-			</ConvexClientProvider>
-		</ClerkProviderWithTheme>
+		<ToastProvider position="top-right" maxToasts={3}>
+			<ClerkProviderWithTheme>
+				<ConvexClientProvider>
+					<ConfirmDialogProvider>
+						<AnalyticsIdentity />
+						{children}
+					</ConfirmDialogProvider>
+				</ConvexClientProvider>
+			</ClerkProviderWithTheme>
+		</ToastProvider>
 	);
 }
