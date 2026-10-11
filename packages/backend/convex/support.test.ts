@@ -72,4 +72,24 @@ describe("support.getConversationsIdentity", () => {
 		);
 		expect(identity).toBeNull();
 	});
+
+	it("returns null instead of throwing when the session has no active org", async () => {
+		process.env.POSTHOG_SECRET_API_TOKEN = "phs_test_secret";
+		const { clerkUserId } = await setup();
+
+		const identity = await t
+			.withIdentity({ subject: clerkUserId })
+			.query(api.support.getConversationsIdentity, {});
+		expect(identity).toBeNull();
+	});
+
+	it("returns null instead of throwing when the active org isn't synced yet", async () => {
+		process.env.POSTHOG_SECRET_API_TOKEN = "phs_test_secret";
+		const { clerkUserId } = await setup();
+
+		const identity = await t
+			.withIdentity(createTestIdentity(clerkUserId, "org_not_synced"))
+			.query(api.support.getConversationsIdentity, {});
+		expect(identity).toBeNull();
+	});
 });
