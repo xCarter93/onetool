@@ -14,9 +14,11 @@ const NON_USABLE_DRAWN: SignaturePayload = {
 };
 
 let fillStyles: unknown[];
+let exportedSizes: [number, number][];
 
 beforeEach(() => {
 	fillStyles = [];
+	exportedSizes = [];
 	// jsdom has no canvas or Path2D; the PNG export needs both.
 	vi.stubGlobal(
 		"Path2D",
@@ -24,25 +26,28 @@ beforeEach(() => {
 			constructor(public d?: string) {}
 		},
 	);
-	HTMLCanvasElement.prototype.getContext = vi.fn(
-		() =>
-			({
-				scale: vi.fn(),
-				translate: vi.fn(),
-				fillRect: vi.fn(),
-				fill: vi.fn(),
-				set fillStyle(v: unknown) {
-					fillStyles.push(v);
-				},
-			}) as unknown as CanvasRenderingContext2D,
-	) as unknown as typeof HTMLCanvasElement.prototype.getContext;
-	HTMLCanvasElement.prototype.toDataURL = vi.fn(
-		() => "data:image/png;base64,STUBDRAWN",
+	vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+		(() => ({
+			scale: vi.fn(),
+			translate: vi.fn(),
+			fillRect: vi.fn(),
+			fill: vi.fn(),
+			set fillStyle(v: unknown) {
+				fillStyles.push(v);
+			},
+		})) as unknown as HTMLCanvasElement["getContext"],
+	);
+	vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockImplementation(
+		function (this: HTMLCanvasElement) {
+			exportedSizes.push([this.width, this.height]);
+			return "data:image/png;base64,STUBDRAWN";
+		},
 	);
 });
 
 afterEach(() => {
 	cleanup();
+	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 	document.documentElement.classList.remove("dark");
 });
@@ -51,7 +56,7 @@ function getArea() {
 	return screen.getByRole("application", { name: "Draw your signature" });
 }
 
-function drawStroke(pointCount: number, pointerId = 1) {
+function drawStroke(pointCount: number, pointerId = 1, stepX = 12) {
 	const area = getArea();
 	const base = { isPrimary: true, pointerType: "mouse", button: 0, pointerId };
 	act(() => {
@@ -59,7 +64,7 @@ function drawStroke(pointCount: number, pointerId = 1) {
 		for (let i = 1; i < pointCount; i++) {
 			fireEvent.pointerMove(area, {
 				...base,
-				clientX: 10 + i * 12,
+				clientX: 10 + i * stepX,
 				clientY: 40 + (i % 2) * 8,
 			});
 		}
@@ -100,6 +105,20 @@ describe("SignatureDrawnPad", () => {
 		expect(lastPayload(onChange).isUsable).toBe(true);
 		expect(fillStyles).toContain("#000000");
 		expect(fillStyles).not.toContain("#f8fafc");
+	});
+
+	it("crops the export to the pad when a stroke runs past its edge", () => {
+		const onChange = vi.fn();
+		render(<SignatureDrawnPad value={NON_USABLE_DRAWN} onChange={onChange} />);
+		Object.defineProperty(getArea(), "clientWidth", { value: 120 });
+		Object.defineProperty(getArea(), "clientHeight", { value: 160 });
+
+		// Ends at x=220; pointer capture records it, the pad clips it.
+		drawStroke(8, 1, 30);
+
+		expect(lastPayload(onChange).isUsable).toBe(true);
+		// 2x export scale: 120 CSS px of visible pad.
+		expect(exportedSizes.at(-1)?.[0]).toBe(240);
 	});
 
 	it("treats a stray tap as no signature", () => {

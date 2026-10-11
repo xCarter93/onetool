@@ -110,11 +110,11 @@ export function ApprovalReceipt({
 
 			{isApproved && receipt.signatureUrl ? (
 				<div className="mt-4 rounded-lg border border-border bg-card p-3">
-					{/* Stored signatures are black ink for paper; flip them to read on dark cards. */}
+					{/* Older dark-mode signatures stored near-white ink; force black, then flip on dark cards. */}
 					<img
 						src={receipt.signatureUrl}
 						alt={`Signature of ${clientName}`}
-						className="max-h-24 w-auto dark:invert"
+						className="max-h-24 w-auto brightness-0 dark:invert"
 					/>
 				</div>
 			) : null}
