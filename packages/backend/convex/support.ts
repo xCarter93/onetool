@@ -1,4 +1,4 @@
-import { userQuery } from "./lib/factories";
+import { optionalUserQuery } from "./lib/factories";
 
 /**
  * PostHog Support identity verification (widget ticket ownership).
@@ -8,14 +8,14 @@ import { userQuery } from "./lib/factories";
  * user across devices. distinctId must match the client's analytics identify
  * call (the Clerk user id).
  */
-export const getConversationsIdentity = userQuery({
+export const getConversationsIdentity = optionalUserQuery({
 	args: {},
 	handler: async (
 		ctx
 	): Promise<{ distinctId: string; hash: string } | null> => {
 		const secret = process.env.POSTHOG_SECRET_API_TOKEN;
-		// Unset env fails open: the widget falls back to session-based access.
-		if (!secret) return null;
+		// Unset env or no synced org/user fails open: the widget falls back to session-based access.
+		if (!secret || !ctx.user) return null;
 
 		const encoder = new TextEncoder();
 		const distinctId = ctx.user.externalId;
