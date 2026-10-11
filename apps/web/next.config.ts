@@ -61,6 +61,8 @@ const nextConfig: NextConfig = {
 	poweredByHeader: false,
 	typedRoutes: true,
 	reactCompiler: true,
+	// Next 16 blocks dev assets for non-localhost hosts; lets a quick tunnel load the dev server.
+	allowedDevOrigins: ["*.trycloudflare.com"],
 	// Required so the PostHog reverse-proxy paths below aren't trailing-slash redirected.
 	skipTrailingSlashRedirect: true,
 	// Same-origin reverse proxy for posthog-js (US cloud). Ingestion + static assets

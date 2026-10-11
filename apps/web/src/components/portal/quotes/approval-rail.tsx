@@ -17,7 +17,7 @@
  *  - else → SignatureCard + checkboxes + Approve / Decline
  *
  * Test seam: `_testInitialSignature` (dev-only) seeds signaturePayload from
- * a usable payload so RTL tests don't have to drive the canvas.
+ * a usable payload so RTL tests don't have to drive the pad.
  */
 
 import { useMemo, useState } from "react";
@@ -25,10 +25,13 @@ import { Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
+
 import {
 	SignatureCard,
 	type SignaturePayload,
 } from "./signature-card";
+import { ApprovalConsent } from "./approval-consent";
 import { ApprovalReceipt } from "./approval-receipt";
 import { DeclineModal, type DeclineModalConfirmResult } from "./decline-modal";
 import { StaleVersionBanner } from "./stale-version-banner";
@@ -266,44 +269,23 @@ export function ApprovalRail({
 							</div>
 						)}
 
-						<label className="flex items-start gap-2 text-[13px] cursor-pointer">
-							<input
-								type="checkbox"
-								aria-label="I accept the scope and terms above."
-								checked={termsAccepted}
-								onChange={(e) => setTermsAccepted(e.target.checked)}
-								disabled={submitting || isCooldownActive}
-								className="mt-0.5"
-							/>
-							<span>I accept the scope and terms above.</span>
-						</label>
-
-						{signaturePayload.mode === "typed" && (
-							<label className="flex items-start gap-2 text-[13px] cursor-pointer text-muted-foreground leading-relaxed">
-								<input
-									type="checkbox"
-									aria-label="By typing my name and clicking Approve, I am signing this quote electronically. I agree that my electronic signature is the legal equivalent of my manual signature on this quote."
-									checked={intentAffirmed}
-									onChange={(e) => setIntentAffirmed(e.target.checked)}
-									disabled={submitting || isCooldownActive}
-									className="mt-0.5"
-								/>
-								<span>
-									By typing my name and clicking Approve, I am signing this
-									quote electronically. I agree that my electronic signature is
-									the legal equivalent of my manual signature on this quote.
-								</span>
-							</label>
-						)}
+						<ApprovalConsent
+							signatureMode={signaturePayload.mode}
+							termsAccepted={termsAccepted}
+							onTermsAcceptedChange={setTermsAccepted}
+							intentAffirmed={intentAffirmed}
+							onIntentAffirmedChange={setIntentAffirmed}
+							disabled={submitting || isCooldownActive}
+						/>
 
 						<div className="mt-1 flex flex-col gap-2">
-							<button
-								type="button"
+							<Button
+								size="lg"
+								className="w-full"
 								onClick={handleApprove}
 								disabled={!canApprove}
 								aria-busy={submitting}
 								aria-label="Approve quote"
-								className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{submitting ? (
 									<Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -311,16 +293,16 @@ export function ApprovalRail({
 									<Check className="h-3.5 w-3.5" aria-hidden="true" />
 								)}
 								{submitting ? "Approving…" : "Approve quote"}
-							</button>
+							</Button>
 
-							<button
-								type="button"
+							<Button
+								variant="ghost"
+								className="w-full text-muted-foreground"
 								onClick={() => setDeclineOpen(true)}
 								disabled={submitting}
-								className="w-full py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
 							>
 								Decline this quote
-							</button>
+							</Button>
 						</div>
 					</>
 				)}

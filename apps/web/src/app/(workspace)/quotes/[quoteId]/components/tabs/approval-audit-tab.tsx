@@ -91,14 +91,18 @@ function SignatureThumb({ url }: { url: string | null }) {
 			</p>
 		);
 	}
+	// The filter would blacken an img's own background, so the paper sits on a wrapper.
 	return (
-		// eslint-disable-next-line @next/next/no-img-element
-		<img
-			src={url}
-			alt="Client signature"
-			className="h-16 w-auto rounded border border-border bg-white"
-			onError={() => setBroken(true)}
-		/>
+		<div className="inline-block rounded border border-border bg-white">
+			{/* Older dark-mode signatures stored near-white ink; force black on the paper. */}
+			{/* eslint-disable-next-line @next/next/no-img-element */}
+			<img
+				src={url}
+				alt="Client signature"
+				className="h-16 w-auto brightness-0"
+				onError={() => setBroken(true)}
+			/>
+		</div>
 	);
 }
 

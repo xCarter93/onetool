@@ -76,7 +76,7 @@ export function ApprovalReceipt({
 	const { date, time } = formatDateTime(receipt.createdAt);
 
 	const containerClasses = isApproved
-		? "rounded-[8px] border border-emerald-200 bg-emerald-50/40 p-6"
+		? "rounded-[8px] border border-success/25 bg-success-soft p-6"
 		: "rounded-[8px] border border-border bg-muted/40 p-6";
 
 	const eyebrowText = isApproved ? "Approved" : "Declined";
@@ -87,7 +87,7 @@ export function ApprovalReceipt({
 			<div className="flex items-start gap-3">
 				{isApproved && (
 					<CheckCircle2
-						className="h-5 w-5 mt-0.5 text-emerald-600 shrink-0"
+						className="h-5 w-5 mt-0.5 text-success shrink-0"
 						aria-hidden="true"
 					/>
 				)}
@@ -110,10 +110,11 @@ export function ApprovalReceipt({
 
 			{isApproved && receipt.signatureUrl ? (
 				<div className="mt-4 rounded-lg border border-border bg-card p-3">
+					{/* Older dark-mode signatures stored near-white ink; force black, then flip on dark cards. */}
 					<img
 						src={receipt.signatureUrl}
 						alt={`Signature of ${clientName}`}
-						className="max-h-24 w-auto"
+						className="max-h-24 w-auto brightness-0 dark:invert"
 					/>
 				</div>
 			) : null}

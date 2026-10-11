@@ -87,7 +87,7 @@ const usableDrawnSig: SignaturePayload = {
 	isUsable: true,
 	mode: "drawn",
 	dataUrl: "data:image/png;base64,AAAA",
-	rawData: { strokes: [{ points: [{ x: 0, y: 0, time: 0 }] }] },
+	rawData: { format: "reui-signature-pad", strokes: [{ points: [[0, 0, 2]] }] },
 };
 const usableTypedSig: SignaturePayload = {
 	isUsable: true,
