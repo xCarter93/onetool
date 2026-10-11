@@ -15,11 +15,13 @@ import { Check, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/portal/format";
 import {
 	SignatureCard,
 	type SignaturePayload,
 } from "./signature-card";
+import { ApprovalConsent } from "./approval-consent";
 import { ApprovalReceipt } from "./approval-receipt";
 import { DeclineModal, type DeclineModalConfirmResult } from "./decline-modal";
 import { StaleVersionBanner } from "./stale-version-banner";
@@ -256,15 +258,15 @@ export function ApprovalBottomSheet({
 							{formatMoney(quote.total)}
 						</p>
 					</div>
-					<button
-						type="button"
+					<Button
+						size="lg"
+						className="w-full"
 						onClick={() => setExpanded(true)}
 						disabled={submitting}
-						className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-3 text-[14px] font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
 					>
 						<Check className="h-3.5 w-3.5" aria-hidden="true" />
 						Approve quote
-					</button>
+					</Button>
 				</div>
 			</div>
 
@@ -350,41 +352,21 @@ export function ApprovalBottomSheet({
 										/>
 									</div>
 
-									<label className="flex items-start gap-2 text-[13px] cursor-pointer">
-										<input
-											type="checkbox"
-											checked={termsAccepted}
-											onChange={(e) => setTermsAccepted(e.target.checked)}
-											disabled={submitting || isCooldownActive}
-											className="mt-0.5"
-										/>
-										<span>I accept the scope and terms above.</span>
-									</label>
+									<ApprovalConsent
+										signatureMode={signaturePayload.mode}
+										termsAccepted={termsAccepted}
+										onTermsAcceptedChange={setTermsAccepted}
+										intentAffirmed={intentAffirmed}
+										onIntentAffirmedChange={setIntentAffirmed}
+										disabled={submitting || isCooldownActive}
+									/>
 
-									{signaturePayload.mode === "typed" && (
-										<label className="flex items-start gap-2 text-[13px] cursor-pointer text-muted-foreground">
-											<input
-												type="checkbox"
-												checked={intentAffirmed}
-												onChange={(e) => setIntentAffirmed(e.target.checked)}
-												disabled={submitting || isCooldownActive}
-												className="mt-0.5"
-											/>
-											<span>
-												By typing my name and clicking Approve, I am signing
-												this quote electronically. I agree that my electronic
-												signature is the legal equivalent of my manual signature
-												on this quote.
-											</span>
-										</label>
-									)}
-
-									<button
-										type="button"
+									<Button
+										size="lg"
+										className="w-full"
 										onClick={handleApprove}
 										disabled={!canApprove}
 										aria-busy={submitting}
-										className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-3 text-[14px] font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 									>
 										{submitting ? (
 											<Loader2
@@ -395,16 +377,16 @@ export function ApprovalBottomSheet({
 											<Check className="h-3.5 w-3.5" aria-hidden="true" />
 										)}
 										{submitting ? "Approving…" : "Approve quote"}
-									</button>
+									</Button>
 
-									<button
-										type="button"
+									<Button
+										variant="ghost"
+										className="w-full text-muted-foreground"
 										onClick={() => setDeclineOpen(true)}
 										disabled={submitting}
-										className="w-full text-[13px] text-muted-foreground hover:text-foreground py-1"
 									>
 										Decline this quote
-									</button>
+									</Button>
 								</>
 							)}
 						</div>

@@ -119,12 +119,11 @@ export function SignatureTypedPad({
 			</div>
 			<div
 				aria-label="Typed signature preview"
-				className="flex h-24 items-center rounded-[8px] border border-border bg-background px-4"
+				className="flex h-24 items-center rounded-[8px] border border-border bg-background px-4 text-foreground"
 				style={{
 					fontFamily: '"Caveat", cursive',
 					fontSize: 36,
 					fontWeight: 600,
-					color: "var(--acme, #0f172a)",
 					minHeight: 96,
 				}}
 			>

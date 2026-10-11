@@ -5,41 +5,18 @@
  * contract that downstream consumers (Plan 14-04 API route, Plan 14-05
  * approval rail) submit to /api/portal/quotes/[quoteId]/approve.
  *
- * SSR safety: SignatureCanvasPad is dynamically imported with ssr:false
- * because signature_pad touches the DOM at construction.
- *
  * Tab change resets state and emits a non-usable payload tagged with the
  * new mode, so parent state stays consistent without us reaching into the
  * pads.
  */
 
-import dynamic from "next/dynamic";
 import { useCallback } from "react";
 
+import type { SignaturePadStroke } from "@/components/reui/signature-pad";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { SignatureDrawnPad } from "./signature-drawn-pad";
 import { SignatureTypedPad } from "./signature-typed-pad";
-
-const SignatureCanvasPad = dynamic(
-	() =>
-		import("./signature-canvas-pad").then(
-			(m) => m.SignatureCanvasPad,
-		),
-	{
-		ssr: false,
-		loading: () => (
-			<div className="h-40 animate-pulse rounded-[8px] bg-muted" />
-		),
-	},
-);
-
-export type SignatureStroke = {
-	points: Array<{ x: number; y: number; time: number; pressure?: number }>;
-	dotSize?: number;
-	minWidth?: number;
-	maxWidth?: number;
-	penColor?: string;
-};
 
 export type SignaturePayload =
 	| {
@@ -51,7 +28,7 @@ export type SignaturePayload =
 	| {
 			mode: "drawn";
 			dataUrl: string;
-			rawData: { strokes: SignatureStroke[] };
+			rawData: { format: "reui-signature-pad"; strokes: SignaturePadStroke[] };
 			isUsable: true;
 	  }
 	| {
@@ -110,7 +87,7 @@ export function SignatureCard({
 				/>
 			</TabsContent>
 			<TabsContent value="drawn" className="pt-3">
-				<SignatureCanvasPad
+				<SignatureDrawnPad
 					value={value}
 					onChange={onChange}
 					disabled={disabled}

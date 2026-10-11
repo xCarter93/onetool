@@ -15,7 +15,7 @@ const usableDrawnSig: SignaturePayload & { isUsable: true } = {
 	isUsable: true,
 	mode: "drawn",
 	dataUrl: "data:image/png;base64,iVBORw0KGgo=",
-	rawData: { strokes: [] },
+	rawData: { format: "reui-signature-pad", strokes: [] },
 };
 
 describe("useQuoteDecision 401 envelope consumer (Plan 14.1-01)", () => {
