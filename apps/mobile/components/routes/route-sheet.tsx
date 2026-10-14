@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { SafeAreaView } from "react-native-screens/experimental";
 import { Plus } from "lucide-react-native";
 import type { Doc, Id } from "@onetool/backend/convex/_generated/dataModel";
 import { Panel, RecordRow, SectionLabel } from "@/components/canvas";
@@ -21,7 +22,7 @@ export type RouteSheetProps = {
 	onSelect: (id: Id<"routes">) => void;
 	onCreate: () => void;
 	onSeedSchedule: () => void;
-	/** Bottom clearance now that nothing floats over the sheet. */
+	/** Gap above the tab bar and accessory. */
 	bottomInset: number;
 };
 
@@ -150,12 +151,17 @@ export function RouteSheet(props: RouteSheetProps) {
 						</Panel>
 					</>
 				) : null}
+				<SafeAreaView edges={{ bottom: true }} style={styles.chromeSpacer} />
 			</BottomSheetScrollView>
 		</BottomSheet>
 	);
 }
 
 const styles = StyleSheet.create({
+	// SafeAreaView defaults to flex: 1.
+	chromeSpacer: {
+		flex: 0,
+	},
 	content: {
 		paddingHorizontal: 16,
 		paddingBottom: 32,
