@@ -247,8 +247,8 @@ function SeriesPageContent() {
 			)}
 
 			<div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.5fr)]">
-				<Frame variant="ghost" className="gap-0 bg-transparent p-0">
-					<FrameHeader className="workspace-section-heading flex-row items-start justify-between gap-4 px-0">
+				<Frame>
+					<FrameHeader className="flex-row items-center justify-between gap-4">
 						<div>
 							<FrameTitle>Schedule</FrameTitle>
 							<FrameDescription>
@@ -290,7 +290,7 @@ function SeriesPageContent() {
 							</Button>
 						) : null}
 					</FrameHeader>
-					<FramePanel className="space-y-3 rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
+					<FramePanel className="space-y-3">
 						{series.state === "ended" && (
 							<p className="text-sm text-muted-foreground">
 								This series has ended. Resume it to restore eligible upcoming
@@ -327,12 +327,12 @@ function SeriesPageContent() {
 						) : null}
 					</FramePanel>
 				</Frame>
-				<Frame variant="ghost" className="gap-0 bg-transparent p-0">
-					<FrameHeader className="workspace-section-heading px-0">
+				<Frame>
+					<FrameHeader>
 						<FrameTitle>Next visit</FrameTitle>
 						<FrameDescription>The next scheduled occurrence</FrameDescription>
 					</FrameHeader>
-					<FramePanel className="rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
+					<FramePanel>
 						{nextVisit ? (
 							<Link
 								href={`/projects/${nextVisit._id}`}

@@ -230,14 +230,14 @@ export function SeriesOccurrences({
 	const table = useTable({ features: dataGridFeatures, data: rows, columns });
 
 	return (
-		<Frame variant="ghost" className="mt-8 gap-0 bg-transparent p-0">
-			<FrameHeader className="workspace-section-heading px-0">
+		<Frame>
+			<FrameHeader>
 				<FrameTitle>Occurrences</FrameTitle>
 				<FrameDescription>
 					Each visit is a separate project with its own work history.
 				</FrameDescription>
 			</FrameHeader>
-			<FramePanel className="rounded-none border-0 bg-transparent p-0 shadow-none before:hidden">
+			<FramePanel className="p-0">
 				{occurrences === undefined ? (
 					<div className="space-y-3 p-4">
 						{Array.from({ length: 5 }, (_, index) => (
@@ -256,7 +256,7 @@ export function SeriesOccurrences({
 						recordCount={rows.length}
 						tableLayout={{ width: "auto", headerBackground: true }}
 					>
-						<DataGridContainer>
+						<DataGridContainer className="rounded-none border-0">
 							<DataGridTable />
 						</DataGridContainer>
 					</DataGrid>

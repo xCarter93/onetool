@@ -6,6 +6,7 @@ import {
 	View,
 	useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-screens/experimental";
 import { Navigation } from "lucide-react-native";
 import type { Doc } from "@onetool/backend/convex/_generated/dataModel";
 import { Badge, Button, Card, Eyebrow } from "@/components/ui";
@@ -47,7 +48,7 @@ export type StopCarouselProps = {
 	onSendGoogle?: () => void;
 	/** Waypoint-cap note, e.g. "Sends the next 10 stops — 3 left off." */
 	sendGoogleNote?: string | null;
-	/** Bottom clearance now that nothing floats over the carousel. */
+	/** Gap above the tab bar and accessory. */
 	bottomInset: number;
 };
 
@@ -69,7 +70,11 @@ export function StopCarousel(props: StopCarouselProps) {
 	}, [props.focusIndex, snap]);
 
 	return (
-		<View style={[styles.wrap, { bottom: props.bottomInset }]} pointerEvents="box-none">
+		<SafeAreaView
+			edges={{ bottom: true }}
+			style={[styles.wrap, { paddingBottom: props.bottomInset }]}
+			pointerEvents="box-none"
+		>
 			<ScrollView
 				ref={scrollRef}
 				horizontal
@@ -96,7 +101,7 @@ export function StopCarousel(props: StopCarouselProps) {
 					</Card>
 				))}
 			</ScrollView>
-		</View>
+		</SafeAreaView>
 	);
 }
 
@@ -298,6 +303,9 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		left: 0,
 		right: 0,
+		bottom: 0,
+		// SafeAreaView defaults to flex: 1.
+		flex: 0,
 	},
 	strip: {
 		gap: CARD_GAP,
