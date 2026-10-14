@@ -256,8 +256,8 @@ export function SeriesAgreementPanel({
 		: "The quote and scheduled projects remain. The schedule can be edited again, and no recurring agreement will be active.";
 
 	return (
-		<Frame variant="ghost" className="mt-8 gap-0 bg-transparent p-0">
-			<FrameHeader className="workspace-section-heading flex-row items-start justify-between gap-4 px-0">
+		<Frame>
+			<FrameHeader className="flex-row items-center justify-between gap-4">
 				<div>
 					<FrameTitle>Recurring agreement</FrameTitle>
 					<FrameDescription>
@@ -288,7 +288,7 @@ export function SeriesAgreementPanel({
 					)}
 				</div>
 			</FrameHeader>
-			<FramePanel className="rounded-none border-0 bg-transparent px-0 shadow-none before:hidden">
+			<FramePanel>
 				{agreement === undefined ? (
 					<div className="space-y-2" aria-label="Loading recurring agreement">
 						<Skeleton className="h-5 w-52" />
