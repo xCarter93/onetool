@@ -17,7 +17,7 @@ const sharedElements = {
 	cardBox: "w-full max-w-none shadow-none rounded-none bg-transparent",
 	card: "w-full shadow-none rounded-none border-none bg-transparent p-4",
 	footer: { background: "transparent" },
-	footerAction: "bg-transparent border-none shadow-none",
+	footerAction: "items-center bg-transparent border-none shadow-none",
 	header: "items-center gap-3 text-center",
 	headerTitle: "text-foreground text-3xl font-semibold tracking-tight",
 	headerSubtitle: "text-muted-foreground text-base leading-relaxed",
