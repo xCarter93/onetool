@@ -34,6 +34,7 @@
 		"@headlessui/react": "^2.2.7",
 		"@heroicons/react": "^2.2.0",
 		"@lottiefiles/dotlottie-react": "^0.17.8",
+		"@lucasmarkes/hairline": "^0.5.1",
 		"@mapbox/search-js-react": "^1.5.1",
 		"@number-flow/react": "^0.5.10",
 		"@onetool/backend": "workspace:*",

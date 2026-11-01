@@ -247,6 +247,9 @@ importers:
       '@lottiefiles/dotlottie-react':
         specifier: ^0.17.8
         version: 0.17.12(react@19.2.3)
+      '@lucasmarkes/hairline':
+        specifier: ^0.5.1
+        version: 0.5.1(react@19.2.3)
       '@mapbox/search-js-react':
         specifier: ^1.5.1
         version: 1.5.1(mapbox-gl@3.17.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -2828,6 +2831,14 @@ packages:
 
   '@lottiefiles/dotlottie-web@0.60.0':
     resolution: {integrity: sha512-AbQYmyZ8ZihCGPwjdN0e7bJ7W7yVmHG24IXn8kxyFJJNJmSJEaarpOSivu/1KoFGiw86OMmiWcLXrPs1XjT6Qw==}
+
+  '@lucasmarkes/hairline@0.5.1':
+    resolution: {integrity: sha512-zjY3bdMC3As/+enKitZ1X+D1HjpesQiAKzG1sbCFsOrb5xIuJEoepkJTBIO4jmFh6JXOQlGGylhV71nr9ipNpQ==}
+    peerDependencies:
+      react: 19.2.3
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   '@mapbox/geojson-rewind@0.5.2':
     resolution: {integrity: sha512-tJaT+RbYGJYStt7wI3cq4Nl4SXxG8W7JDG5DMJu97V25RnbNg3QtQtf+KD+VLjNpWKYsRvXDNmNrBgEETr1ifA==}
@@ -13789,6 +13800,10 @@ snapshots:
       react: 19.2.3
 
   '@lottiefiles/dotlottie-web@0.60.0': {}
+
+  '@lucasmarkes/hairline@0.5.1(react@19.2.3)':
+    optionalDependencies:
+      react: 19.2.3
 
   '@mapbox/geojson-rewind@0.5.2':
     dependencies:
