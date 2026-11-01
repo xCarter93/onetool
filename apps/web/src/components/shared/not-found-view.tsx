@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NotFoundFigure } from "./not-found-figure";
 
 // Giant outlined "404" wordmark (from React Bits Pro 404-2), retinted to tokens.
 const NotFoundBackdrop = () => {
@@ -44,14 +45,14 @@ const NotFoundBackdrop = () => {
 	);
 };
 
-// CSS entrance keeps this a server component, so the root not-found ships no JS on every route.
+// CSS entrance keeps this a server component; only the figure is a client island.
 const ENTER =
 	"animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 ease-(--ease-out-quint) motion-reduce:animate-none";
 
 export default function NotFoundView() {
 	return (
-		<main className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-background px-4 py-12 text-foreground sm:px-6 sm:py-16 lg:px-8">
-			<div className="pointer-events-none absolute inset-x-0 top-24 mx-auto h-32 max-w-350 opacity-[0.14] sm:top-1/2 sm:h-auto sm:-translate-y-1/2 dark:opacity-10">
+		<main className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-background px-4 pt-24 pb-12 text-foreground sm:px-6 sm:pb-16 lg:px-8">
+			<div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto h-32 max-w-350 opacity-[0.14] sm:bottom-10 sm:h-auto dark:opacity-10">
 				<NotFoundBackdrop />
 			</div>
 
@@ -73,6 +74,8 @@ export default function NotFoundView() {
 			</a>
 
 			<div className="relative z-10 flex w-full max-w-xl flex-col items-center text-center">
+				<NotFoundFigure className={`${ENTER} mb-4 w-full max-w-88`} />
+
 				<h1 className={`${ENTER} delay-80 text-4xl font-semibold tracking-[-0.02em] text-balance sm:text-5xl`}>
 					Page not found
 				</h1>
