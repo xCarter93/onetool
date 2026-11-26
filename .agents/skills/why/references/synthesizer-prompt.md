@@ -63,15 +63,17 @@ File paths, line ranges, key symbols. Two or three lines to orient a reader who 
 **Claims with direct evidence**, one per bullet. Quote or paraphrase the source and cite precisely. Format each finding like:
 
 - **[Direct]** {Claim}. Source: [PR #123](url) / ticket ID / file:line. {Brief quote or paraphrase.}
-- **[Supported]** {Claim}. Evidence: {list of items and what each contributes}.
 
-Use `[Direct]` for single-source, explicit evidence. Use `[Supported]` when multiple indirect items converge on a conclusion.
+Use `[Direct]` for single-source, explicit evidence.
 
 ### What We Can Reasonably Infer
 
 **Claims that aren't explicitly stated anywhere but are well-supported by indirect evidence.** Make the inference chain visible: "Given A and B, it's likely that C." Use hedged language ("appears to", "likely", "suggests", "is consistent with"). Format:
 
+- **[Supported]** {Claim}. Evidence: {list of items and what each contributes, each cited}.
 - **[Inferred]** {Hedged claim}. Reasoning: {the specific evidence and the inference step}.
+
+Use `[Supported]` when multiple indirect items converge on a conclusion.
 
 If there's nothing to infer, skip this section.
 

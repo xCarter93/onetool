@@ -43,10 +43,16 @@ For each substantive commit, pull the PR context:
 # Find the PR number from the merge commit or branch
 git log -1 --format=%B <hash>
 
-# Full PR context: body, review comments, linked issues
+# No PR number in the message (a branch commit under a merge commit): ask GitHub
+gh api repos/{owner}/{repo}/commits/<hash>/pulls --jq '.[].number'
+
+# Full PR context: body, review summaries, conversation comments, linked issues
 gh pr view <number> --json title,body,author,createdAt,mergedAt,labels,closingIssuesReferences,comments,reviews,files
 
-# The --json reviews and comments fields are where the real signal is
+# Inline review comments on changed lines; the reviews field above leaves them out
+gh api --paginate repos/{owner}/{repo}/pulls/<number>/comments
+
+# The reviews, comments, and inline review comments are where the real signal is
 ```
 
 Look for out-of-band docs:

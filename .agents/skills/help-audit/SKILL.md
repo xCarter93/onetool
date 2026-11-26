@@ -5,7 +5,7 @@ description: Re-verify OneTool help center articles (packages/help-content) agai
 
 # Help content audit
 
-The 43 help articles in `packages/help-content/articles/*.ts` were written by fact-checking the code at a point in time. Code moves; copy doesn't. This skill re-runs that fact-check: every user-visible claim in an article (button labels, step sequences, plan availability, permission lines, described behavior) is either confirmed by current code or reported as drift. Wrong docs are worse than no docs — a user following a stale step loses trust in the whole help center — so the bias is: confirm with evidence, and when the code can't confirm a claim, say so rather than guessing.
+The help articles in `packages/help-content/articles/*.ts` were written by fact-checking the code at a point in time. Code moves; copy doesn't. This skill re-runs that fact-check: every user-visible claim in an article (button labels, step sequences, plan availability, permission lines, described behavior) is either confirmed by current code or reported as drift. Wrong docs are worse than no docs — a user following a stale step loses trust in the whole help center — so the bias is: confirm with evidence, and when the code can't confirm a claim, say so rather than guessing.
 
 ## Modes
 
@@ -14,7 +14,7 @@ The 43 help articles in `packages/help-content/articles/*.ts` were written by fa
 
 ## Scope
 
-Default is all 13 categories. Narrow when the request names categories, article refs, or "changed since <ref>". When asked to audit "what changed", prioritize by comparing `git log` timestamps: a category whose source surfaces (see `references/sources.md`) changed after its article file last changed is the one likely to have drifted.
+Default is every category registered in `packages/help-content/registry.ts`. Narrow when the request names categories, article refs, or "changed since <ref>". When asked to audit "what changed", prioritize by comparing `git log` timestamps: a category whose source surfaces (see `references/sources.md`) changed after its article file last changed is the one likely to have drifted.
 
 ## Process
 

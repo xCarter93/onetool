@@ -20,8 +20,8 @@ Review-only: findings and a verdict, no edits. All referenced modules live in
    Several §1 and §4 rows carry a law tag; when one fails, `ux-laws.md` has the web/mobile
    rule and the fix. Judge contrast only after compositing alpha; check both themes.
 
-   A real finding that no rule covers gets two fixes: the code, and a new row in the module
-   it belongs to. Say which row you added in the report.
+   When a real finding has no rule behind it, recommend two fixes in the report: the code
+   change, and the new row for the module it belongs to. `design-improve` makes both edits.
 
 3. **Honor the House exemptions.** StatusBadge tinted colors, data-grid hairline rows, Base UI
    modals, and workspace repetition are house patterns — flagging them is a false positive.

@@ -26,7 +26,7 @@ Decide from the diff, and say which way you decided and why:
 - **Skip** when the change is trivial or contained: docs-only, single-file cosmetic/styling tweaks, a clean removal, config-only, or a few lines with no logic change.
 - **Run** (`coderabbit` CLI on the changed files, excluding markdown files) for anything with real logic: new features, bug fixes touching behavior, backend/schema changes, multi-file refactors.
 
-If the user already said "no need for coderabbit" or "skip the review" in this conversation, honor that. Apply fixes for valid findings, dismiss invalid ones with a one-line reason each. Do **not** re-run CodeRabbit after applying fixes to verify — one pass only.
+If the user already said "no need for coderabbit" or "skip the review" in this conversation, honor that. Apply fixes for valid findings, dismiss invalid ones with a one-line reason each. If you applied any fixes, run the build again before committing. Do **not** re-run CodeRabbit after applying fixes to verify — one pass only.
 
 ### 4. Convex deploy flag
 

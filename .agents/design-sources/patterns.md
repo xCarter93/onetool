@@ -101,7 +101,8 @@ Two empty states with opposite calls to action:
   screen is a thin progress bar; the stale data stays visible. A spinner over populated data is
   a finding. Anything over ~300ms shows an indicator.
 - **Errors** say what failed, why, and offer a retry. They render as an inline message above
-  the affected content, not in place of it, and not as a toast. Forms keep their values.
+  the affected content, not in place of it. A blocking error is never a toast (§6). Forms keep
+  their values.
 - Route-level `error.tsx` boundaries use the role tokens like everything else.
 
 ### Drawing a new empty-state illustration

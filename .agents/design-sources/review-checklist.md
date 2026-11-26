@@ -47,7 +47,7 @@ The operational pass a OneTool design review walks, in order, ending in a findin
 - [ ] **Spacing scale.** The charter ladder (2 within a group, 4 between fields, 6 between groups, 8 between sections), no one-off values. More space above a heading than below it. Read the computed values.
 - [ ] **Z-index scale.** `z-(--z-sticky|dropdown|overlay|modal|above-modal)`, not arbitrary literals. `ui/modal.tsx` portals at `z-[9999]` — anything that must sit above it takes `--z-above-modal`.
 - [ ] **Type scale.** The ramp `text-2xs/xs/sm/base/lg/xl/2xl`, no arbitrary `text-[Npx]`. Hierarchy built from size **+ weight + space**. Weights beyond 400/700 are in play where the design calls for them. `tabular-nums` on money and any column of numbers.
-- [ ] **Elevation and alignment from the charter's decision tables.** Surface → border/radius/shadow; column → alignment/format. A card with a shadow, a centered column, or a hand-typed `cubic-bezier` is a finding.
+- [ ] **Elevation and alignment from the charter's decision tables.** Surface → border/radius/shadow; column → alignment/format. A card with a shadow (other than a child record card's `shadow-sm`), a centered column, or a hand-typed `cubic-bezier` is a finding.
 - [ ] **Page pattern named.** List, Detail, Dashboard, or Form (`patterns.md` §1), with its required pieces present. Page actions sit in the page header; tabs are page state, not navigation.
 - [ ] **Signature chrome respected.** The charcoal rail and 48px header (`--workspace-rail*` tokens, dark in both themes), the grey canvas with 16px top corners, no ad-hoc restyle, no dot-grid, no notch. Pages compose from the `workspace-*` classes. `.workspace-canvas` is the md+ scroller (sticky/scrollspy target); `min-h-screen` on a page root breaks sticky.
 
@@ -70,7 +70,7 @@ The operational pass a OneTool design review walks, in order, ending in a findin
 - [ ] **Focus never removed without a replacement.** `:focus-visible` ring on every interactive element. *(Critical severity in both source corpora: "Never Remove Outline", "Outline Replacement".)*
 - [ ] **Keyboard navigation.** Tab order matches visual order; no traps; a skip-to-content link exists on public surfaces.
 - [ ] **Accessible names.** Icon-only buttons carry `aria-label`; every form control has a real `<label>` (or `aria-label`) — placeholder-as-label is never acceptable. *(Critical.)*
-- [ ] **Contrast AA in both themes.** 4.5:1 body, 3:1 large text (≥18px) and 3:1 for controls, icons, and focus indicators. Verify computed pairs, not by eye. Never gray text on a colored surface.
+- [ ] **Contrast AA in both themes.** 4.5:1 body, 3:1 large text (≥24px, or ≥18.67px bold) and 3:1 for controls, icons, and focus indicators. Verify computed pairs, not by eye. Never gray text on a colored surface.
 - [ ] **Color is never the only signal.** Pair with icon, shape, or text — red/green alone fails.
 - [ ] **Full state cycle shipped, not stubbed.** Skeletons shaped like the real layout (not a generic spinner); composed empty states; inline errors that say what to do next; explicit success feedback. Anything over ~300ms shows a loading indicator. *(Doherty — our 300ms indicator threshold is deliberately tighter than the 400ms response ceiling.)*
 - [ ] **Two empty states, two CTAs.** True-empty ("No invoices yet") offers create; filtered-empty offers "Clear filters", never create. Refresh of data already on screen shows a thin progress bar, not a skeleton or spinner. (`patterns.md` §4.)
@@ -165,8 +165,8 @@ One table, one row per finding, ordered **most severe first**. No "Before/After"
 | Severity | file:line | Finding | Fix |
 |---|---|---|---|
 | P0 | `apps/web/.../InvoiceRow.tsx:64` | Amount formatted with a local `toFixed(2)` helper | Import `formatCurrency` from `@/lib/money` |
+| P0 | `.../Toolbar.tsx:31` | Icon-only button has no accessible name | Add `aria-label="Filter"` |
 | P1 | `.../StatusChip.tsx:12` | Local status→color map duplicates StatusBadge | Replace with `domain/StatusBadge` |
-| P2 | `.../Toolbar.tsx:31` | Icon-only button has no accessible name | Add `aria-label="Filter"` |
 
 Severity:
 
@@ -183,8 +183,8 @@ Rules for the table: cite `file:line` for everything; give the actual fix, not a
 
 One line, explicit, with a one-line rationale.
 
-- **Block** — any P0; or any P1 in the token/charter, accessibility, or motion-feel classes; or a missing state cycle on a shipped surface; or copy that would embarrass the user in front of their client.
-- **Approve** — no P0, no P1 in those classes, states complete, both themes checked, reduced motion respected. P2/P3 may remain open and are listed as follow-ups.
+- **Block** — any P0 or P1; or a missing state cycle on a shipped surface; or copy that would embarrass the user in front of their client.
+- **Approve** — no P0 or P1, states complete, both themes checked, reduced motion respected. P2/P3 may remain open and are listed as follow-ups.
 
 Never announce a pass while the table still holds material findings, and never soften a verdict label — it is load-bearing. If the review is partial (one component, no runtime check), say so in the rationale rather than implying full coverage. Where feel genuinely can't be judged from code, say so and prescribe the check (slow-motion playback, both themes side by side, a real device) instead of guessing.
 

@@ -15,6 +15,7 @@ Starting points for verifying each help category's claims. Globs are deliberatel
 | ai-assistant | `apps/web/src/components/assistant/**` | `packages/backend/convex/assistantTools.ts`, `assistantAgent.ts` |
 | routing | `apps/web/src/app/(workspace)/routing/**` | routes/routing modules (Mapbox) |
 | reports | `apps/web/src/app/(workspace)/reports/**` | report/aggregate modules |
+| community | `apps/web/src/app/(workspace)/community/**`, public page `apps/web/src/app/communities/[slug]/**`, `apps/web/src/app/api/communities/**` | `packages/backend/convex/community*.ts` (pages, leads, analytics) |
 | settings-and-team | `apps/web/src/app/(workspace)/organization/**`, `apps/web/src/app/(workspace)/clients/import/quickbooks/**` | `packages/backend/convex/organizations*.ts`, `lib/permissions.ts`, Clerk billing sync, `packages/backend/convex/quickbooks*.ts` + `lib/quickbooks*.ts` (sync engine, import, mappers) |
 | mobile-app | — | — (audit against `apps/mobile/**`) |
 

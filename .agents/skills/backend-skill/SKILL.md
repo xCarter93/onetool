@@ -1,695 +1,179 @@
 ---
 name: backend-skill
-description: Guidelines for working with OneTool's Convex backend services. Use this when creating or modifying backend functions, handling webhooks, managing data, or implementing authentication and authorization. Emphasizes organization data separation and proper authentication patterns.
+description: OneTool Convex backend rules that AGENTS.md leaves out, covering authorization and read scope, plan gates, actions, outbound email, webhooks, schema, deletes and tests. Use when creating or modifying backend functions, handling webhooks, managing data, or implementing authentication and authorization, and whenever org data separation is at stake.
 ---
 
-# Backend Development Skill
+# OneTool backend
 
-## Overview
+Backend code lives in `packages/backend/convex/`. Read `AGENTS.md` first. It covers the function builders, triggers, money, numbering, plan limits and the event bus, and this skill does not repeat any of that. The code is the source of truth. Each example below names its source file, and if the two ever disagree, follow the file.
 
-OneTool uses **Convex** as its backend framework. All backend code lives in `packages/backend/convex/`. This skill provides essential patterns for building secure, multi-tenant backend functions with proper organization data isolation.
+## Authorization
 
-## Critical Security Principles
+A function that touches org data makes three separate checks. Membership in the org is not enough on its own.
 
-### 1. Always Authenticate Users
+| Check | Call | Proves |
+| --- | --- | --- |
+| Level | `ctx.requireLevel(object, level)` | the caller holds `view`, `modify` or `delete` on the object |
+| Tenancy | `ctx.orgEntity(table, id)` | the row exists and its `orgId` is the caller's org |
+| Record scope | `ctx.requireRecordScope(object, ref)` for one row, `ctx.applyReadScope` or `ctx.scopedToActor` for lists | a scoped member is assigned to the record |
 
-**Every query and mutation must verify the user is authenticated.**
+- The record-scope checks return early for the owner, for admins and for members with an `allRecords` grant, so they never check tenancy. Run `ctx.orgEntity` on every id argument. When one id hangs off another, check that link too. A `contactId` must belong to the `clientId` it came with.
+- `PERMISSION_OBJECTS` in `lib/permissionKeys.ts` defines the permission objects, their scope kind and the level ladder, and the web app imports it too. The owner and admins resolve to full access. Members start from `DEFAULT_MEMBER_PERMISSIONS`, which grants modify on their assigned projects and tasks and nothing else, so a default member gets `FORBIDDEN` from `clients.list`.
+- The scope kind picks the list filter. Projects, tasks and reports are `direct` objects and filter on an assignee field with `ctx.scopedToActor(object, rows, getAssignees)`. Clients, quotes, invoices and documents are `derived` objects and filter through the caller's assigned projects with `ctx.applyReadScope(object, rows, keep)`.
+- For a single record, pass `requireRecordScope` a ref such as `{ clientId }` or `{ projectId, clientId }`. A ref resolves by point read. A closure over `ctx.actorScope()` reads every project in the org and widens the transaction's read set, which invites OCC conflicts.
+- `ctx.can(object, level)` returns a boolean for optional parts of a response. `ctx.gateRead(object)` runs the same check at `view` for a query that composes several object types. `projects.ts` uses it for its client, quote and invoice panels.
+- For a custom gate, throw through `denyPermission` in `lib/permissions.ts`. It raises `ConvexError({ code: "FORBIDDEN", object, level })` and leaves user and org ids out of the payload.
+- `isAdminRole(role)` in `lib/permissions.ts` is the exact-match admin test for a membership row, for jobs like finding the admins to notify. Gate access with the ctx checks above.
 
-```typescript
-import { getCurrentUserOrThrow } from "./lib/auth";
+A list read, from `clients.listNamesForOrg` in `clients.ts`. `clients.list` does the same through a local helper.
 
-export const myQuery = query({
-  args: {},
-  handler: async (ctx) => {
-    // ALWAYS start with authentication
-    const user = await getCurrentUserOrThrow(ctx);
-    // ... rest of logic
-  },
+```ts
+export const listNamesForOrg = optionalUserQuery({
+	args: {},
+	handler: async (ctx) => {
+		const orgId = ctx.orgId;
+		if (!orgId) return [];
+		await ctx.requireLevel("clients", "view");
+
+		const clients = await ctx.db
+			.query("clients")
+			.withIndex("by_org", (q) => q.eq("orgId", orgId))
+			.collect();
+		const visible = await ctx.applyReadScope("clients", clients, (c, s) =>
+			s.clientIds.has(c._id)
+		);
+
+		return visible
+			.filter((c) => c.status !== "archived")
+			.map((c) => ({
+				_id: c._id,
+				companyName: c.companyName,
+			}));
+	},
 });
 ```
 
-**Authentication helpers** (`lib/auth.ts`):
-- `getCurrentUserOrThrow()` - Gets user, throws if not authenticated (use this by default)
-- `getCurrentUser()` - Gets user, returns null if not authenticated
-- `userByExternalId()` - Looks up user by Clerk ID
+Most workspace reads use `optionalUserQuery` and return an empty value when `ctx.orgId` is null, so a call with no active org gets an empty result instead of an error.
 
-### 2. Always Enforce Organization Data Separation
+A write, from `clients.archive` in `clients.ts`. The real function also logs activity and analytics.
 
-**Every operation must validate organization access to prevent data leaks between organizations.**
+```ts
+export const archive = userMutation({
+	args: { id: v.id("clients") },
+	handler: async (ctx, args) => {
+		await ctx.requireLevel("clients", "modify");
+		await ctx.orgEntity("clients", args.id);
+		await ctx.requireRecordScope("clients", { clientId: args.id });
 
-```typescript
-import { getCurrentUserOrgId } from "./lib/auth";
-
-export const listClients = query({
-  args: {},
-  handler: async (ctx) => {
-    await getCurrentUserOrThrow(ctx);
-    
-    // ALWAYS get and validate organization ID
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    // ALWAYS filter by organization
-    return await ctx.db
-      .query("clients")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .collect();
-  },
+		await ctx.db.patch(args.id, { status: "archived", archivedAt: Date.now() });
+		return args.id;
+	},
 });
 ```
 
-**Organization helpers** (`lib/auth.ts`):
-- `getCurrentUserOrgId()` - Gets organization ID, throws if not found
-- `getCurrentUserOrgIdOptional()` - Gets organization ID, returns null if not found
-- `validateOrgAccess(ctx, orgId)` - Validates user has access to specified org
-- `getOrganizationByClerkId()` - Looks up organization by Clerk org ID
+Create records through the domain's create helper when it has one. `createClient` in `clients.ts` mints the portal id, logs activity, emits the record-created automation event and enqueues QuickBooks sync. A bare `ctx.db.insert("clients", ...)` skips all four.
 
-**Pattern for operations on existing records:**
+## Plan gates
 
-```typescript
-export const updateClient = mutation({
-  args: { id: v.id("clients"), name: v.string() },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    const userOrgId = await getCurrentUserOrgId(ctx);
-    
-    // Get the record
-    const client = await ctx.db.get(args.id);
-    if (!client) throw new Error("Client not found");
-    
-    // ALWAYS validate organization ownership
-    if (client.orgId !== userOrgId) {
-      throw new Error("Client does not belong to your organization");
-    }
-    
-    // Now safe to update
-    await ctx.db.patch(args.id, { name: args.name });
-  },
-});
+Plan checks go through `lib/entitlements.ts`.
+
+- `requireFeature(ctx, key)` gates a switch row in `FEATURES` that throws on denial. For rows with `deny: { type: "soft" }`, branch on `isFeatureAllowed(plan, key)` instead. On a denied soft row, `requireFeature` throws a misconfiguration error where the caller should have skipped quietly.
+- Check and debit a meter in the same mutation with one timestamp. Both then land in the same billing period, and the debit rolls back if a later step throws. From `quotes.create` in `quotes.ts`:
+
+```ts
+const { plan } = await entitlementsFromIdentity(ctx);
+const now = Date.now();
+await requireMeter(ctx, ctx.orgId, "clientSends", plan, { now });
+await consumeMeter(ctx, ctx.orgId, "clientSends", { now });
 ```
 
-## Backend Structure
+The `hasPremiumAccess` helper in `lib/permissions.ts` has no callers left. `assistantChat.ts` gates the assistant with `requireFeature(ctx, "aiAssistant")` and the `assistantMessages` meter. The public `api.permissions.hasPremiumAccess` query stays frozen for mobile and resolves through `entitlementsFromIdentity`.
 
-### Core Files
+## Actions
 
-**Location**: `packages/backend/convex/`
+Actions have no builder and no `ctx.db`. Import `action` or `internalAction` from `_generated/server` and authorize inside the internal query or mutation the action runs. The caller's identity carries through `ctx.runQuery`, so that function can call `getCurrentUserOrgId` from `lib/auth.ts` with `requireLevel` and `hasAllRecords` from `lib/permissions.ts`, the non-ctx forms of the checks above. The model is `boldsignActions.createEmbeddedSignatureRequest`, which calls `internal.boldsign.getEmbeddedRequestContext`, which calls `authorizeQuoteModify` in `boldsign.ts`.
 
-- `schema.ts` - Database schema definitions
-- `auth.config.ts` - Clerk authentication configuration
-- `http.ts` - HTTP routes and webhook handlers
-- `convex.config.ts` - Convex deployment configuration
+## Outbound email
 
-### Library Utilities
+Mutations enqueue sends on the durable `@convex-dev/resend` component in `email/durableResend.ts`, the app's one outbound queue. Outbound email never goes out through `fetch` or the raw SDK from a public action.
 
-**Location**: `packages/backend/convex/lib/`
+- New sends tied to a client go through `deliverOutbound` in `email/deliver.ts`, which sends, writes the `emailMessages` row and bumps the inbox thread. `quotes.sendToClient` and `invoices.sendToClient` show the full shape. The inbox composer, `resend.sendClientEmail`, is the exception. It calls `sendOutbound` directly and writes the row itself.
+- `deliverOutbound` calls `sendOutbound` in `email/outbound.ts`, the single provider seam. It handles the idempotency key, the suppression list and attachment deferral to `email/attachmentSend.ts`. The message type is `OutboundMessage` in `email/types.ts`, with `from`, `to[]`, `subject` and `html`, plus optional `text`, `cc`, `bcc` and `replyTo`.
+- Build `from` with `formatEmailFrom(name, resolveFromEmail(organization))`, from `lib/emailFrom.ts` and `email/branding.ts`. It strips CR and LF from user-controlled names to block header injection.
+- React Email templates need an action to render. Template sends schedule an action that renders the HTML and hands it to a mutation that calls `deliverOutbound`. The header comment of `portal/quoteEmail.ts` walks through it.
+- Quote and invoice sends debit the `clientSends` meter.
+- The only direct `resend.sendEmail` call is the portal OTP in `portal/email.ts`, an internal action with a fixed OneTool sender. The raw SDK, `getResendClient()` in `lib/resendClient.ts`, serves inbound reads and attachment sends.
 
-- `auth.ts` - Authentication and organization helpers
-- `permissions.ts` - Role-based and feature-based permissions
-- `memberships.ts` - Organization membership utilities
-- `activities.ts` - Activity logging helpers
-- `aggregates.ts` - Aggregate data calculation helpers
-- `shared.ts` - Shared utility functions
-- `storage.ts` - File storage helpers
+## Webhooks and HTTP routes
 
-### Domain Files
+Every route is in `http.ts`. Verify the signature with `verifySvixWebhook`, `verifyBoldSignWebhook` or `verifyStripeWebhook` from `lib/webhooks.ts` before trusting the payload, and return 500 when the secret is unset. Then hand off to an internal function. Clerk sync uses `internalMutation` from `lib/triggers.ts`. Anything org-scoped uses `systemMutation` once verified data names the org, the way the Stripe handler resolves the org from the connected account id. A `systemMutation` ctx carries `orgId`, `orgEntity` and `db` only, with no user or permission helpers.
 
-Each domain has its own file (e.g., `clients.ts`, `projects.ts`, `tasks.ts`, `invoices.ts`):
-- Queries (read operations)
-- Mutations (write operations)
-- Internal mutations (webhook/cron handlers)
-- Domain-specific helper functions
+- Retry policy varies by route. Stripe returns 500 when dispatch fails so Stripe retries, and it dedupes through `stripeWebhookEvents.startProcessingEvent`. The Clerk organization and membership cases and Resend inbound catch the error, log it and return 200, so the sender stops retrying. Choose one on purpose for a new route.
+- Forward Resend lifecycle events such as `email.sent` and `email.bounced` to `resend.handleResendEventWebhook`. Only the component can map Resend's `email_id` to the id stored on `emailMessages`. Its callback is `resendWebhook.handleEmailEvent`.
+- The BoldSign route answers `Verification` events before the signature check, because that event is the setup handshake.
+- `/portal/otp/request`, `/community/interest` and `/community/view` are server-to-server routes that Next.js calls. Each checks a shared secret header with `constantTimeEqual`. When rotating one of these secrets, set the new value in Convex before Vercel, as the comment above `communitySecretAccepted` explains. Env vars ending in `_NEXT` hold the incoming secret during a rotation.
+- `auth.config.ts` throws at load when `PORTAL_JWT_ISSUER` is unset, so every deployment needs that variable.
 
-## Webhook Management
+## Portal functions
 
-**All webhooks are defined in**: `packages/backend/convex/http.ts`
+Client-portal functions in `portal/` authenticate a portal JWT, not Clerk. They use raw `query`, and `mutation` from `lib/triggers.ts`. Each one calls `getPortalSessionOrThrow(ctx)` from `portal/helpers.ts` first, then checks every row against `session.orgId` and the session contact's client.
 
-### Available Webhooks
+## Schema and deletes
 
-#### 1. Clerk Users Webhook (`/clerk-users-webhook`)
+- An org-scoped table carries `orgId: v.id("organizations")` even when it also points at a parent, so `clientContacts` has both `clientId` and `orgId`. It needs an index that starts with `orgId`, either `by_org` or a compound such as `by_status` on `["orgId", "status"]`.
+- An index that doesn't start with `orgId`, like `clients.by_portal_access_id`, spans every tenant. Mint values stored there on the server and keep them globally unique. The comment on `mintPortalAccessId` in `clients.ts` describes the takeover a caller-chosen value allowed.
+- A new org-scoped table needs an entry in `ORG_SCOPED_CASCADE_TABLES` and a drain block in `cascadeDeleteOrgDataPage`, both in `lib/orgCascade.ts`. Drain children before parents, and delete stored files with `StorageHelpers.deleteFromStorage`. The guard in `orgCascade.test.ts` only compares that list with `schema.ts`, so it can't catch a missing drain block.
+- Deleting one record removes its children and their stored files in the same mutation. `projects.remove` shows the order.
 
-**Purpose**: Sync user and organization data from Clerk
+## Tests
 
-**Supported events**:
-- `user.created` / `user.updated` - Sync user data
-- `user.deleted` - Clean up user data
-- `session.created` - Update last sign-in date
-- `organization.created` - Create organization in database
-- `organization.updated` - Sync organization changes
-- `organization.deleted` - Clean up organization data
-- `organizationMembership.created` - Add user to organization
-- `organizationMembership.updated` - Update user's role
-- `organizationMembership.deleted` - Remove user from organization
+Adapted from `clientDocuments.test.ts` and `permissionsGating.test.ts`:
 
-**Handler functions**: `users.ts`, `organizations.ts`
-
-**When to modify**: When adding new user or organization fields to sync from Clerk
-
-#### 2. Clerk Billing Webhook (`/clerk-billing-webhook`)
-
-**Purpose**: Handle subscription and payment events
-
-**Supported events**:
-- `paymentAttempt.created` - Log new payment attempts
-- `paymentAttempt.updated` - Track payment status
-- `subscription.created` - Initialize new subscription
-- `subscription.active` - Activate premium features
-- `subscription.updated` - Sync subscription changes
-- `subscription.pastDue` - Handle payment failures
-
-**Handler functions**: `billingWebhook.ts`
-
-**When to modify**: When adding billing-related features or subscription tiers
-
-#### 3. BoldSign Webhook (`/boldsign-webhook`)
-
-**Purpose**: Track e-signature document status
-
-**Supported events**:
-- `Sent` - Document sent to signers
-- `Viewed` - Document viewed by signer
-- `Signed` - Document signed by a party
-- `Completed` - All parties signed
-- `Declined` - Document declined
-- `Revoked` - Document revoked by sender
-- `Expired` - Document expired
-
-**Handler functions**: `boldsign.ts`
-
-**When to modify**: When adding e-signature workflow changes or notifications
-
-#### 4. Resend Email Webhook (`/resend-webhook`)
-
-**Purpose**: Track email delivery and handle inbound email
-
-**Supported events**:
-- `email.sent` - Email accepted by Resend
-- `email.delivered` - Email delivered to recipient
-- `email.opened` - Email opened by recipient
-- `email.bounced` - Email bounced
-- `email.complained` - Marked as spam
-- `email.received` - Inbound email received
-
-**Handler functions**: `resendWebhook.ts`, `resendReceiving.ts`
-
-**When to modify**: When adding email tracking features or inbound email processing
-
-### Webhook Security
-
-All webhooks verify signatures before processing:
-- Clerk webhooks: Svix signature verification
-- BoldSign webhooks: HMAC SHA-256 signature verification
-- Resend webhooks: Svix signature verification
-
-## Permission & Role Management
-
-**Location**: `packages/backend/convex/lib/permissions.ts`
-
-### Role-Based Permissions
-
-```typescript
-import { requireAdmin, isAdmin, isMember } from "./lib/permissions";
-
-export const deleteClient = mutation({
-  args: { id: v.id("clients") },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    
-    // Require admin role
-    await requireAdmin(ctx);
-    
-    // ... perform delete
-  },
-});
-
-// Or check role and handle logic
-export const getAnalytics = query({
-  args: {},
-  handler: async (ctx) => {
-    await getCurrentUserOrThrow(ctx);
-    const userIsAdmin = await isAdmin(ctx);
-    
-    // Return different data based on role
-    if (userIsAdmin) {
-      return fullAnalytics;
-    } else {
-      return limitedAnalytics;
-    }
-  },
-});
-```
-
-**Role helpers**:
-- `getCurrentUserRole()` - Gets role from Clerk JWT
-- `isAdmin()` - Checks if user is admin
-- `isMember()` - Checks if user is member (non-admin)
-- `requireAdmin()` - Throws if user is not admin
-
-### Feature-Based Permissions
-
-```typescript
-import { requirePremiumAccess, hasPremiumAccess } from "./lib/permissions";
-
-export const exportData = mutation({
-  args: { format: v.string() },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    
-    // Require premium feature
-    await requirePremiumAccess(ctx);
-    
-    // ... perform export
-  },
-});
-
-// Or check feature and return availability
-export const checkExportAccess = query({
-  args: {},
-  handler: async (ctx) => {
-    const hasAccess = await hasPremiumAccess(ctx);
-    return { canExport: hasAccess };
-  },
-});
-```
-
-**Feature helpers**:
-- `hasFeature(ctx, feature)` - Checks if user has feature
-- `requireFeature(ctx, feature)` - Throws if user lacks feature
-- `hasPremiumAccess()` - Checks for premium access
-- `requirePremiumAccess()` - Throws if no premium access
-
-## Function Types
-
-### Queries (Read Operations)
-
-Use `query` for read-only operations:
-
-```typescript
-import { query } from "./_generated/server";
-import { v } from "convex/values";
-
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    await getCurrentUserOrThrow(ctx);
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    return await ctx.db
-      .query("clients")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .collect();
-  },
-});
-```
-
-### Mutations (Write Operations)
-
-Use `mutation` for operations that modify data:
-
-```typescript
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
-
-export const create = mutation({
-  args: {
-    name: v.string(),
-    email: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    return await ctx.db.insert("clients", {
-      ...args,
-      orgId, // ALWAYS include orgId
-      status: "active",
-    });
-  },
-});
-```
-
-### Actions (External API Calls)
-
-Use `action` for operations that call external APIs:
-
-```typescript
-import { action } from "./_generated/server";
-import { v } from "convex/values";
-
-export const sendEmail = action({
-  args: {
-    to: v.string(),
-    subject: v.string(),
-    body: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Actions can make external API calls
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(args),
-    });
-    
-    return await response.json();
-  },
-});
-```
-
-### Internal Mutations (Webhooks/Crons)
-
-Use `internalMutation` for webhook handlers and cron jobs:
-
-```typescript
-import { internalMutation } from "./_generated/server";
-import { v } from "convex/values";
-
-export const upsertFromClerk = internalMutation({
-  args: {
-    data: v.object({
-      id: v.string(),
-      email_addresses: v.array(v.any()),
-      // ... other Clerk fields
-    }),
-  },
-  handler: async (ctx, args) => {
-    // Internal mutations don't require auth checks
-    // They're only called by webhooks or other internal functions
-    
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_external_id", (q) => q.eq("externalId", args.data.id))
-      .unique();
-    
-    if (existingUser) {
-      await ctx.db.patch(existingUser._id, {
-        email: args.data.email_addresses[0]?.email_address,
-      });
-    } else {
-      await ctx.db.insert("users", {
-        externalId: args.data.id,
-        email: args.data.email_addresses[0]?.email_address,
-        name: args.data.first_name + " " + args.data.last_name,
-      });
-    }
-  },
-});
-```
-
-## Schema Patterns
-
-**Location**: `packages/backend/convex/schema.ts`
-
-### Organization-Scoped Tables
-
-**Every table with user data MUST have an `orgId` field:**
-
-```typescript
-clients: defineTable({
-  // Organization reference (REQUIRED for multi-tenancy)
-  orgId: v.id("organizations"),
-  
-  // Client fields
-  name: v.string(),
-  email: v.optional(v.string()),
-  status: v.union(
-    v.literal("active"),
-    v.literal("inactive"),
-    v.literal("archived")
-  ),
-})
-  .index("by_org", ["orgId"])
-  .index("by_status", ["orgId", "status"]),
-```
-
-**Always index by organization:**
-- Primary index: `by_org` on `orgId`
-- Compound indexes: Start with `orgId` (e.g., `by_status` on `["orgId", "status"]`)
-
-### User and Organization Tables
-
-```typescript
-users: defineTable({
-  name: v.string(),
-  email: v.string(),
-  externalId: v.string(), // Clerk user ID
-  // ... other fields
-})
-  .index("by_external_id", ["externalId"])
-  .index("by_email", ["email"]),
-
-organizations: defineTable({
-  clerkOrganizationId: v.string(), // Clerk org ID
-  name: v.string(),
-  ownerUserId: v.id("users"),
-  // Billing fields
-  clerkSubscriptionId: v.optional(v.string()),
-  clerkPlanId: v.optional(v.string()),
-  subscriptionStatus: v.optional(v.union(/* ... */)),
-  // ... other fields
-})
-  .index("by_clerk_org", ["clerkOrganizationId"])
-  .index("by_owner", ["ownerUserId"]),
-```
-
-## Complete Function Example
-
-Here's a complete example showing all best practices:
-
-```typescript
-import { query, mutation } from "./_generated/server";
-import { v } from "convex/values";
-import { getCurrentUserOrThrow, getCurrentUserOrgId } from "./lib/auth";
-import { requireAdmin } from "./lib/permissions";
-
-// Query - List with organization filtering
-export const list = query({
-  args: {
-    status: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    // 1. Authenticate user
-    await getCurrentUserOrThrow(ctx);
-    
-    // 2. Get organization ID
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    // 3. Query with organization filter
-    let query = ctx.db
-      .query("clients")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId));
-    
-    const clients = await query.collect();
-    
-    // 4. Additional filtering
-    if (args.status) {
-      return clients.filter((c) => c.status === args.status);
-    }
-    
-    return clients;
-  },
-});
-
-// Mutation - Create with organization
-export const create = mutation({
-  args: {
-    name: v.string(),
-    email: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    // 1. Authenticate user
-    await getCurrentUserOrThrow(ctx);
-    
-    // 2. Get organization ID
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    // 3. Insert with organization
-    return await ctx.db.insert("clients", {
-      ...args,
-      orgId, // ALWAYS include
-      status: "active",
-    });
-  },
-});
-
-// Mutation - Update with validation
-export const update = mutation({
-  args: {
-    id: v.id("clients"),
-    name: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // 1. Authenticate user
-    await getCurrentUserOrThrow(ctx);
-    
-    // 2. Get organization ID
-    const userOrgId = await getCurrentUserOrgId(ctx);
-    
-    // 3. Get and validate record
-    const client = await ctx.db.get(args.id);
-    if (!client) throw new Error("Client not found");
-    
-    // 4. CRITICAL: Validate organization access
-    if (client.orgId !== userOrgId) {
-      throw new Error("Client does not belong to your organization");
-    }
-    
-    // 5. Update
-    await ctx.db.patch(args.id, {
-      name: args.name,
-    });
-  },
-});
-
-// Mutation - Delete with admin check
-export const remove = mutation({
-  args: { id: v.id("clients") },
-  handler: async (ctx, args) => {
-    // 1. Authenticate user
-    await getCurrentUserOrThrow(ctx);
-    
-    // 2. Require admin role
-    await requireAdmin(ctx);
-    
-    // 3. Get and validate organization
-    const userOrgId = await getCurrentUserOrgId(ctx);
-    const client = await ctx.db.get(args.id);
-    
-    if (!client) throw new Error("Client not found");
-    if (client.orgId !== userOrgId) {
-      throw new Error("Access denied");
-    }
-    
-    // 4. Delete
-    await ctx.db.delete(args.id);
-  },
-});
-```
-
-## Testing
-
-**Location**: `packages/backend/convex/*.test.ts`
-
-**Test setup**: `test.setup.ts`
-
-Tests use Convex's test helpers with authentication mocking:
-
-```typescript
-import { convexTest } from "convex-test";
-import { describe, it, expect } from "vitest";
-import schema from "./schema";
+```ts
+import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
+import { setupConvexTest } from "./test.setup";
+import { createTestIdentity, createTestOrg } from "./test.helpers";
 
-describe("clients", () => {
-  it("should list clients for organization", async () => {
-    const t = convexTest(schema);
-    
-    // Create test data
-    const orgId = await t.run(async (ctx) => {
-      return await ctx.db.insert("organizations", {
-        name: "Test Org",
-        clerkOrganizationId: "org_test",
-      });
-    });
-    
-    // Run query with auth context
-    const clients = await t.query(api.clients.list, {}, {
-      auth: {
-        getUserIdentity: async () => ({
-          subject: "user_test",
-          activeOrgId: "org_test",
-        }),
-      },
-    });
-    
-    expect(clients).toHaveLength(0);
-  });
+describe("clients org isolation", () => {
+	let t: ReturnType<typeof setupConvexTest>;
+
+	beforeEach(() => {
+		t = setupConvexTest();
+	});
+
+	it("rejects an update to another org's client", async () => {
+		const orgA = await t.run((ctx) =>
+			createTestOrg(ctx, { clerkUserId: "user_a", clerkOrgId: "org_a" })
+		);
+		const orgB = await t.run((ctx) =>
+			createTestOrg(ctx, { clerkUserId: "user_b", clerkOrgId: "org_b" })
+		);
+		const asA = t.withIdentity(createTestIdentity(orgA.clerkUserId, orgA.clerkOrgId));
+		const asB = t.withIdentity(createTestIdentity(orgB.clerkUserId, orgB.clerkOrgId));
+
+		const clientId = await asB.mutation(api.clients.create, {
+			companyName: "Org B Co",
+			status: "active",
+		});
+
+		await expect(
+			asA.mutation(api.clients.update, { id: clientId, companyName: "Taken" })
+		).rejects.toThrow("Client does not belong to your organization");
+		expect(await asA.query(api.clients.list, {})).toEqual([]);
+	});
 });
 ```
 
-## Common Patterns
+- `setupConvexTest()` registers the app's components, including the aggregates, Resend, workpool and rate limiter. A bare `convexTest(schema)` lacks them.
+- `createTestOrg` seeds a user, an org owned by that user and an admin membership. Its default Clerk ids come from `Date.now()`, so pass `clerkUserId` and `clerkOrgId` whenever a test seeds two orgs.
+- `addMemberToOrg` seeds a member with the default grants. To grant more, patch the membership's `permissions` the way `grantMemberPermissions` does in `permissionsGating.test.ts`.
+- When the function under test schedules work, use fake timers and drain them with `t.finishAllScheduledFunctions(vi.runAllTimers)`, as `clients.test.ts` does.
 
-### Pagination
+## Done when
 
-```typescript
-export const listPaginated = query({
-  args: {
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    return await ctx.db
-      .query("clients")
-      .withIndex("by_org", (q) => q.eq("orgId", orgId))
-      .paginate(args.paginationOpts);
-  },
-});
-```
-
-### Cascade Deletes
-
-```typescript
-export const deleteProject = mutation({
-  args: { id: v.id("projects") },
-  handler: async (ctx, args) => {
-    await getCurrentUserOrThrow(ctx);
-    const orgId = await getCurrentUserOrgId(ctx);
-    
-    // Validate ownership
-    const project = await ctx.db.get(args.id);
-    if (!project || project.orgId !== orgId) {
-      throw new Error("Project not found");
-    }
-    
-    // Delete related tasks
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.id))
-      .collect();
-    
-    for (const task of tasks) {
-      await ctx.db.delete(task._id);
-    }
-    
-    // Delete project
-    await ctx.db.delete(args.id);
-  },
-});
-```
-
-## Environment Variables
-
-Common environment variables used in backend:
-- `CLERK_ISSUER_DOMAIN` - Clerk authentication domain
-- `CLERK_USER_WEBHOOK_SECRET` - Clerk webhook signature verification
-- `CLERK_BILLING_WEBHOOK_SECRET` - Clerk billing webhook signature
-- `RESEND_API_KEY` - Resend email API key
-- `RESEND_WEBHOOK_SECRET` - Resend webhook signature
-- `BOLDSIGN_WEBHOOK_SECRET` - BoldSign webhook signature
-
-## Security Checklist
-
-Before merging any backend code:
-
-- [ ] Does the function authenticate the user?
-- [ ] Does it validate organization access?
-- [ ] Are all queries filtered by `orgId`?
-- [ ] Are all updates/deletes validated against user's organization?
-- [ ] Are role/feature checks applied where needed?
-- [ ] Are webhooks properly secured with signature verification?
-- [ ] Are error messages safe (no sensitive data leaks)?
-- [ ] Is the schema properly indexed?
-- [ ] Are tests covering the organization isolation?
-
-## Summary
-
-1. **Always authenticate**: Start every function with `getCurrentUserOrThrow()`
-2. **Always validate organization**: Use `getCurrentUserOrgId()` and validate `orgId` matches
-3. **Always filter by organization**: Every query must include organization filter
-4. **Use proper function types**: Query for reads, mutation for writes, action for external APIs
-5. **Webhooks are in http.ts**: All webhook handlers centralized in one file
-6. **Follow schema patterns**: Every user-data table needs `orgId` and organization indexes
-7. **Test organization isolation**: Verify users can't access other organizations' data
-
+- Every public query and mutation uses a builder from `lib/factories.ts`, or is a deliberate public endpoint with its own auth, either a portal session or a shared secret. Public actions authorize in the internal function they run.
+- Every id argument passes through `ctx.orgEntity`, and each linked id matches its parent.
+- Every Clerk-authenticated function has a level gate. Single-record reads and writes on scopable objects have a record-scope check, and lists apply read scope.
+- New webhook routes verify the signature before anything else.
+- Tests cover the cross-org case and the default-member case.

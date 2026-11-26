@@ -53,7 +53,7 @@ const createClient = useMutation(api.clients.create);
 - **Event bus**: Entity status changes emit events via `emitStatusChangeEvent()` in `eventBus.ts`, which trigger workflow automations. Cascading automations have recursion depth limits.
 - **Sequential numbering**: Quote and invoice numbers come from the per-org `orgCounters` row via `nextQuoteNumber`/`nextInvoiceNumber` in `lib/orgCounters.ts`; a manually typed number goes through `reserveQuoteNumber`/`reserveInvoiceNumber` so the counter moves past it.
 - **Plan limits**: Free plan is metered, not capped: 20 client sends/month (+10 bonus in months with a Stripe collection), 5 e-signatures/month, 10 assistant messages/UTC-day, 5 saved reports, 2,000 CSV import rows lifetime; clients and projects are unlimited. Seats: 5 free / 20 business, Clerk-enforced. Business-only switches: automations, routing, QuickBooks, AI report generation, portal badge removal. Enforced via `lib/entitlements.ts` (`isFeatureAllowed`/`requireMeter`); advertised rows come from `lib/planMatrix.ts` (`PLAN_MATRIX`), and every pricing surface renders from it.
-- **Assistant access**: users may use the AI assistant if they are EITHER on the paid plan OR have the manual metadata override flag (`org.clerkPlanSlug` / metadata flags, see `lib/permissions.ts`).
+- **Assistant access**: every plan can use the AI assistant (`aiAssistant` is free for all in `lib/entitlements.ts`); the free plan's volume rides the `assistantMessages` meter.
 
 ## Testing
 

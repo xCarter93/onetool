@@ -17,11 +17,12 @@ For a PR number/URL, pull **both** comment streams — bots post to each differe
 gh pr view <N> --comments                                  # issue-level comments
 gh api repos/<owner>/<repo>/pulls/<N>/comments --paginate  # inline review comments (file + line)
 gh api repos/<owner>/<repo>/pulls/<N>/reviews --paginate   # review bodies (CodeRabbit summaries live here)
+gh api graphql -F owner=<owner> -F repo=<repo> -F n=<N> -f query='query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved isOutdated path comments(first:1){nodes{databaseId}}}}}}}'  # thread resolved/outdated state
 ```
 
 For pasted output from a secondary AI review (Codex, etc.), parse the findings directly from the paste.
 
-Deduplicate — bots often repeat the same finding as both a summary bullet and an inline comment. Note which findings are already marked resolved/outdated on the PR and skip those.
+Deduplicate — bots often repeat the same finding as both a summary bullet and an inline comment. Skip threads already resolved on the PR. Re-check outdated threads against the current code, since a later push can move the line without fixing the defect.
 
 ### 2. Validate each finding against the codebase
 

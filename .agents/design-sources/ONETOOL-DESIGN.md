@@ -49,7 +49,7 @@ Answer the question here first; read the rest of the charter for the reasoning.
 **What absolutely not?** Raw hex or palette utilities in components (lint warns), a second
 radius scale, a local status map, a sixth status role, a tinted full row, a toast for a
 blocking error, a spinner over data that's already on screen, more than one primary button in
-view, a resting card with a shadow, em-dashes in visible copy. Full list in `anti-slop.md`.
+view, a shadowed resting card other than a child record card, em-dashes in visible copy. Full list in `anti-slop.md`.
 
 ## Who this is for
 
@@ -214,7 +214,7 @@ Borders do the structural work. "The page is a Mondrian, not a Trello board."
 | Popover, menu, select, hover card, tooltip, toast | `shadow-floating` (`--popover-shadow`) |
 | Dialog, alert dialog, drawer, sheet, command | `shadow-overlay` (`--dialog-shadow`) over the plain dimmed backdrop |
 
-`shadow-raised` is retired. Nothing at rest carries a shadow.
+`shadow-raised` is retired. Nothing at rest carries a shadow except the child record card's `shadow-sm` (see Decision tables).
 
 ### Sizing
 
@@ -440,8 +440,8 @@ Generic anti-slop lists (see `anti-slop.md`) ban some patterns OneTool uses deli
   not our confirmation and editor patterns.
 - **data-grid rows with hairline dividers are correct** for workspace tables.
 - **Bordered panels on a grey canvas are the layout**, not "cards everywhere." A
-  `workspace-panel` or ReUI frame is the container; what's banned is a shadowed card, a card
-  inside a card, or a card grid standing in for a table.
+  `workspace-panel` or ReUI frame is the container; what's banned is a shadowed card other than a
+  child record card, a card inside a card, or a card grid standing in for a table.
 - **Workspace repetition/consistency is intentional.** Anti-repetition and "take a bold
   risk" rules apply to landing/marketing only.
 - **Signature chrome** is the charcoal rail, the continuous 48px header with centered search,
