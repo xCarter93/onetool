@@ -1,0 +1,9 @@
+[mcp_servers.reui]
+url = "https://mcp.reui.io/api/mcp"
+
+[mcp_servers.convex]
+command = "pnpm"
+args = ["--dir", "packages/backend", "exec", "convex", "mcp", "start"]
+
+[mcp_servers.posthog]
+url = "https://mcp.posthog.com/mcp"

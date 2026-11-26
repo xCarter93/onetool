@@ -1,0 +1,299 @@
+{
+  "version": 2,
+  "skills": {
+    "babysit-pr": {
+      "source": "t3dotgg/tstack",
+      "sourceType": "github",
+      "skillPath": "skills/babysit-pr/SKILL.md",
+      "computedHash": "b6f349b95dbf4cce64cf61608b4ed9a98ce3725afe29676e6614efc8dccb5c29"
+    },
+    "clerk": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk/SKILL.md",
+      "computedHash": "996d537b40a1032066d1fe722d886cb4b8ce7ec905ffffc5ce8538521660989a"
+    },
+    "clerk-backend-api": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-backend-api/SKILL.md",
+      "computedHash": "9ee9a2c33cc481b01e89b1b91b4b6d210b207927353d87d6858dc96f39a23527"
+    },
+    "clerk-billing": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-billing/SKILL.md",
+      "computedHash": "c0d175b12dc1757e6e7a41afa1bf5d5194c53cce7030aaedeebbf11f0b45cd83"
+    },
+    "clerk-expo": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-expo/SKILL.md",
+      "computedHash": "e028c2d8e9d9b1c2ad22f3337a09b486a66385294f12226387ed7e43a565d33b"
+    },
+    "clerk-nextjs-patterns": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-nextjs-patterns/SKILL.md",
+      "computedHash": "5775102acceae0b132c1818a51147623da645880aa27ee2d9e3aa2a6358af357"
+    },
+    "clerk-orgs": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-orgs/SKILL.md",
+      "computedHash": "a850fc9d7eae6d0a8d6e5f552604970991107ab514fbeed2195632bea7c3139c"
+    },
+    "clerk-webhooks": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/clerk-webhooks/SKILL.md",
+      "computedHash": "b50cef6155462607f633da76c99f761a80eeae52819c6ba0b4ce0293561f165f"
+    },
+    "codebase-design": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/codebase-design/SKILL.md",
+      "computedHash": "d40f025dc1b0f2020663260f38f2bcb8d6ed3523afb11e5fda624b01238677e8"
+    },
+    "convex-advisor": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-advisor/SKILL.md",
+      "computedHash": "a2c31fa5eae854df262d6db4a3a49e7a4f92f2a5256a8859acc17c8e4c402ffd"
+    },
+    "convex-authz": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-authz/SKILL.md",
+      "computedHash": "173f78e1405b50daebb5581a7cedf27c8d80e6cdf50b9a58b3dfb04e6ddcc361"
+    },
+    "convex-create-component": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-create-component/SKILL.md",
+      "computedHash": "bc9749298386bfac9ff9ee8d23e5537dcd3bcad1fb6c48bf9587d7afdf034caa"
+    },
+    "convex-docs": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-docs/SKILL.md",
+      "computedHash": "34e22f7f46deed8d80e68a95d98c45db710360267b4a0fa7187995894db431e6"
+    },
+    "convex-expert": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-expert/SKILL.md",
+      "computedHash": "b99c28ca1bfa803b4889a1f390a41a7372a93a6a98d4e869ae1d2448f4a06133"
+    },
+    "convex-migrate": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-migrate/SKILL.md",
+      "computedHash": "0d141a9d2b830775c908280cb4e6fdf7d972928436adfb53547e6cfee9ee71d4"
+    },
+    "convex-optimize": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-optimize/SKILL.md",
+      "computedHash": "93ce86919e573e394805fb36452d6afffba2d2cec70d625c28a7a74b4d2ad93d"
+    },
+    "convex-reviewer": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-reviewer/SKILL.md",
+      "computedHash": "87bb20b72bc424876773f06fa11fd5f147396b472a7e49924deb003a15ede369"
+    },
+    "convex-test": {
+      "source": "convex/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/convex-test/SKILL.md",
+      "computedHash": "5b627fefb022a06c8c5765c11556eff85fa00428d1b5b286fab77a512bc03136"
+    },
+    "council": {
+      "source": "t3dotgg/tstack",
+      "sourceType": "github",
+      "skillPath": "skills/council/SKILL.md",
+      "computedHash": "2b07ab25fa4a1bb07c70b89b8eaf4a5bb43c673faead94aa7f3e608e19577e4e"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "87c78ae966e591f9ceb177789cc5cc9de69277cd26679ffd36ca5300f430d513"
+    },
+    "eas-app-stores": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/eas-app-stores/SKILL.md",
+      "computedHash": "720f43dcfae249de10df2169a9f48843558e09bc7d9afff80902a227fdd87fe5"
+    },
+    "eas-update": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/eas-update/SKILL.md",
+      "computedHash": "c09f10dbadbc8799f868a8782e158a7853d60efe438a9822bd6639bdae863950"
+    },
+    "email-best-practices": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/email-best-practices/SKILL.md",
+      "computedHash": "9618340453f52b03987949227de251a953af1d47bf505975fce1f55032fb3451"
+    },
+    "expo-animation": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-animation/SKILL.md",
+      "computedHash": "7f28a298611a9440484836c2d02366bff5cdbe4c1c4cc2a1965ffe2eb075ffae"
+    },
+    "expo-dev-client": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-dev-client/SKILL.md",
+      "computedHash": "104418366028d28c2e713303131e25c84cd480a50451bb2a8ab4c6a864a928df"
+    },
+    "expo-native-ui": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-native-ui/SKILL.md",
+      "computedHash": "500813b2c531ea88b2cc72206ff395c4453a15cc679b14cd78bf5116923ad541"
+    },
+    "expo-overview": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-overview/SKILL.md",
+      "computedHash": "06a4c16a5e14819b54fd419f2009119ffcb6f8694b067ad589255cf03f5c6671"
+    },
+    "expo-router": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-router/SKILL.md",
+      "computedHash": "9c3a05a145ceec25ccca5c733b9403b03c7174c60c48c017009c2c5a1a68c8cb"
+    },
+    "expo-upgrade": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-upgrade/SKILL.md",
+      "computedHash": "e7963891b55078eec241470f30ebd45afe0d3b7f1363d62e26f5af1b32382f7e"
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "485451958784497cd4c4dbea13cb5bbb579da58fac0d0e45f3bcb310fab68ac7"
+    },
+    "hairline-adopt": {
+      "source": "lucasmarkes/hairline",
+      "sourceType": "github",
+      "skillPath": "skills/hairline-adopt/SKILL.md",
+      "computedHash": "d4edc63a5894714202043b8b591ad6ef568b1f9ec4f3e8ef003d0765cf55914f"
+    },
+    "hairline-create": {
+      "source": "lucasmarkes/hairline",
+      "sourceType": "github",
+      "skillPath": "skills/hairline-create/SKILL.md",
+      "computedHash": "e594dafa7ac7f2c02939ba7863b46ee4789375931bc53267dec8b2b029cea3a4"
+    },
+    "handoff": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/handoff/SKILL.md",
+      "computedHash": "f60a2c3688379b7a306b3a7b8dd4120eab39da44c74fa2cb62d6424935f04aa7"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "f0820b18426a7d9a6c823a890988ba0ac70bf0fd596d30d7ef07c88558728c23"
+    },
+    "leaving-pr-comments": {
+      "source": "t3dotgg/tstack",
+      "sourceType": "github",
+      "skillPath": "skills/leaving-pr-comments/SKILL.md",
+      "computedHash": "aa96b3df788cf8125aa202ad54bebbd91878a0218eae94c8035536d7bda026a2"
+    },
+    "react-email": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-email/SKILL.md",
+      "computedHash": "51cb2479b8c98641bfd1e69e2260f53f5fad251ed2d8e7a0c3138e8899b3d4b3"
+    },
+    "react-native-best-practices": {
+      "source": "callstackincubator/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-best-practices/SKILL.md",
+      "computedHash": "03a527a04426ca72763396170997a51d6d07600100a549f09915a6b4e8dc10c1"
+    },
+    "resend": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend/SKILL.md",
+      "computedHash": "903c2a23cb6935c80deb2f62439ac99f673badecdf89d4151ebb422a09dc0015"
+    },
+    "sol-loop": {
+      "source": "t3dotgg/tstack",
+      "sourceType": "github",
+      "skillPath": "skills/sol-loop/SKILL.md",
+      "computedHash": "579718e954d9edc00de37bdc4666475bcebb5c398b4d8f608f8251a1599bc6f6"
+    },
+    "stripe-best-practices": {
+      "source": "stripe/ai",
+      "sourceType": "github",
+      "skillPath": "skills/stripe-best-practices/SKILL.md",
+      "computedHash": "d0de758f5762cf6b7b697deb3bf5b11cd5b981167b73bcc5c3e73e895ec33dcc"
+    },
+    "stripe-docs": {
+      "source": "stripe/ai",
+      "sourceType": "github",
+      "skillPath": "skills/stripe-docs/SKILL.md",
+      "computedHash": "e4d4628efd7efb5558971920fcbf94176691fa279990a9a8b0833c12bf54bc0d"
+    },
+    "to-spec": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-spec/SKILL.md",
+      "computedHash": "eb934b5eda9523c7853a2741544bd4721ee1bea471f5a04f8397827f67bdbdda"
+    },
+    "to-tickets": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-tickets/SKILL.md",
+      "computedHash": "17496514c92954f68eacdf2b1221e2ddb39fa231b83f03c70bc7d4422f704b2d"
+    },
+    "upgrade-stripe": {
+      "source": "stripe/ai",
+      "sourceType": "github",
+      "skillPath": "skills/upgrade-stripe/SKILL.md",
+      "computedHash": "00ea66e4b873960eb7658d1000036e945e47541dc34ccbe6c550a37545d70f62"
+    },
+    "vercel-composition-patterns": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/composition-patterns/SKILL.md",
+      "computedHash": "f711ed8b16162eaa712abbcdbbae6c926f86c57e60127735fecc3ad0dd85b3fa"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "7991ed4fbecdac23f47c1a40c243e00a212a9e7f3604db93959b3ae11dffe299"
+    },
+    "vercel-react-native-skills": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-skills/SKILL.md",
+      "computedHash": "4c160f1f4e623b989cadb71f42a0813be574d172acf5e32a6411c87f3e28c05a"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "4f68ae07187fb0d1fb78c88b503d089da4cf5a9d9625d1f2e425b1590bf96d92"
+    },
+    "writing-for-agents": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/writing-for-agents/SKILL.md",
+      "computedHash": "e79a2476b2417b228922453478d9505a6b9af19f3a412e560728ce62ed3555ca"
+    }
+  }
+}

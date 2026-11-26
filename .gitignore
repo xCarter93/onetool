@@ -43,16 +43,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-AGENTS.md
-CLAUDE.md
 TODO.md
 PRD.md
 
-/.claude
+/.claude/settings.local.json
+/.claude/worktrees/
 /.cursor
 /.agent
-/.agents
-/.codex
 /.gemini
 /.kiro
 /.github
@@ -61,7 +58,6 @@ PRD.md
 src/app/(workspace)/settings/debug/
 
 /.planning
-skills-lock.json
 /.playwright-mcp
 
 # App Store pre-submission runbook (contains config/credential locations — never commit)
@@ -79,3 +75,50 @@ ds-bundle/
 
 # Design mockups (.pen files + exported PNGs) — local only
 .mockups/
+
+# Agent skills. Third-party skills are pinned in skills-lock.json and restored with
+# `npx skills experimental_install`; only the skills written for this repo are tracked.
+# A new repo-owned skill needs a line in both lists below.
+/.agents/skills/*
+!/.agents/skills/architect/
+!/.agents/skills/backend-skill/
+!/.agents/skills/blast-radius/
+!/.agents/skills/design-improve/
+!/.agents/skills/design-new/
+!/.agents/skills/design-review/
+!/.agents/skills/frontend-skill/
+!/.agents/skills/help-audit/
+!/.agents/skills/performance/
+!/.agents/skills/plan-gate/
+!/.agents/skills/pr-triage/
+!/.agents/skills/reui/
+!/.agents/skills/ship/
+!/.agents/skills/tdd/
+!/.agents/skills/unslop/
+!/.agents/skills/why/
+/.claude/skills/*
+!/.claude/skills/architect
+!/.claude/skills/backend-skill
+!/.claude/skills/blast-radius
+!/.claude/skills/design-improve
+!/.claude/skills/design-new
+!/.claude/skills/design-review
+!/.claude/skills/frontend-skill
+!/.claude/skills/help-audit
+!/.claude/skills/performance
+!/.claude/skills/plan-gate
+!/.claude/skills/pr-triage
+!/.claude/skills/reui
+!/.claude/skills/ship
+!/.claude/skills/tdd
+!/.claude/skills/unslop
+!/.claude/skills/why
+
+# Skill-creator eval runs (local only)
+/.agents/design-skills-workspace/
+
+# Vendored third-party design references (local only)
+/.agents/design-sources/emil-skills/
+/.agents/design-sources/taste-skill/
+/.agents/design-sources/impeccable-reference/
+/.agents/design-sources/ui-ux-pro-max/

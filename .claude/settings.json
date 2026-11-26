@@ -1,0 +1,36 @@
+{
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "impeccable@impeccable": true,
+    "coderabbit@claude-plugins-official": true,
+    "chrome-devtools-mcp@chrome-devtools-plugins": true
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r 'select((.prompt // \"\") | (startswith(\"/\") | not) and test(\"\\\\b(perf|performance|slow(er|ness)?|sluggish|lag(gy|ging)?|janky?|fps|frame ?rate|lcp|inp|cls|ttfb|fcp|web ?vitals|lighthouse|page ?speed|load ?times?|memory ?leaks?|heap|bundle ?size|re-?renders?|long ?tasks?|occ)\\\\b\"; \"i\")) | \"Performance topic detected: invoke the `performance` skill before answering (skip if it is already loaded in this conversation).\"' 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "impeccable": {
+      "source": {
+        "source": "github",
+        "repo": "pbakaus/impeccable"
+      }
+    },
+    "chrome-devtools-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ChromeDevTools/chrome-devtools-mcp"
+      }
+    }
+  },
+  "skillListingMaxDescChars": 500,
+  "disableClaudeAiConnectors": true
+}

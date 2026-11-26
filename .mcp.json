@@ -1,19 +1,23 @@
 {
   "mcpServers": {
-    "shadcn": {
-      "command": "npx",
-      "args": [
-        "shadcn@latest",
-        "mcp"
-      ]
-    },
-    "plan": {
-      "type": "http",
-      "url": "https://plan.agent-native.com/_agent-native/mcp"
-    },
     "reui": {
       "type": "http",
       "url": "https://mcp.reui.io/api/mcp"
+    },
+    "convex": {
+      "command": "pnpm",
+      "args": [
+        "--dir",
+        "packages/backend",
+        "exec",
+        "convex",
+        "mcp",
+        "start"
+      ]
+    },
+    "posthog": {
+      "type": "http",
+      "url": "https://mcp.posthog.com/mcp"
     }
   }
 }
